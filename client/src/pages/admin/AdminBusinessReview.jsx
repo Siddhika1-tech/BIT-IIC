@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { getAdminReviewQueue } from "../../../config/api";
+import { getAdminBusinessReviewQueue } from "../../../config/api";
 import Alert from "../../components/Alert";
 import SearchableSelect from "../../components/SearchableSelect";
 import { getAuthToken } from "../../utils/auth";
@@ -11,10 +11,10 @@ const statusBadgeClass = {
   rejected: "bg-red-50 text-red-700 border-red-200",
 };
 
-export default function AdminEventReview() {
+export default function AdminBusinessReview() {
   const token = useMemo(() => getAuthToken(), []);
   const location = useLocation();
-  const [events, setEvents] = useState([]);
+  const [businesses, setBusinesses] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,82 +24,57 @@ export default function AdminEventReview() {
     severity: "info",
   });
 
-  const loadQueue = async () => {
-    setLoading(true);
-    try {
-      const payload = await getAdminReviewQueue(token);
-      setEvents(payload.data || []);
-    } catch (error) {
-      setAlertState({
-        isOpen: true,
-        message: error.message || "Failed to fetch review queue.",
-        severity: "error",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const loadQueue = async () => {
+      setLoading(true);
+      try {
+        const payload = await getAdminBusinessReviewQueue(token);
+        setBusinesses(payload.data || []);
+      } catch (error) {
+        setAlertState({
+          isOpen: true,
+          message: error.message || "Failed to fetch business review queue.",
+          severity: "error",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadQueue();
   }, [token]);
 
-  const statusOptions = useMemo(() => {
-    return Array.from(
-      new Set(events.map((eventItem) => eventItem.status).filter(Boolean)),
-    );
-  }, [events]);
+  const statusOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(businesses.map((item) => item.status).filter(Boolean)),
+      ),
+    [businesses],
+  );
 
-  const facultyOptions = useMemo(() => {
-    const collected = new Set();
+  const facultyOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(businesses.map((item) => item.ownerName).filter(Boolean)),
+      ).sort((left, right) => left.localeCompare(right)),
+    [businesses],
+  );
 
-    events.forEach((eventItem) => {
-      [
-        eventItem.ownerName,
-        eventItem.faculty1,
-        eventItem.faculty2,
-        eventItem.faculty3,
-        eventItem.facultyApplied,
-      ]
-        .filter(Boolean)
-        .forEach((value) => collected.add(value));
-    });
-
-    return Array.from(collected).sort((left, right) =>
-      left.localeCompare(right),
-    );
-  }, [events]);
-
-  const filteredEvents = useMemo(() => {
-    return events.filter((eventItem) => {
-      if (statusFilter && eventItem.status !== statusFilter) {
-        return false;
-      }
-
-      if (facultyFilter) {
-        const facultyValues = [
-          eventItem.ownerName,
-          eventItem.faculty1,
-          eventItem.faculty2,
-          eventItem.faculty3,
-          eventItem.facultyApplied,
-        ]
-          .filter(Boolean)
-          .map((value) => String(value));
-
-        if (!facultyValues.includes(facultyFilter)) {
+  const filteredBusinesses = useMemo(
+    () =>
+      businesses.filter((item) => {
+        if (statusFilter && item.status !== statusFilter) {
           return false;
         }
-      }
 
-      return true;
-    });
-  }, [events, statusFilter, facultyFilter]);
+        if (facultyFilter && item.ownerName !== facultyFilter) {
+          return false;
+        }
 
-  const handleReset = () => {
-    setStatusFilter("");
-    setFacultyFilter("");
-  };
+        return true;
+      }),
+    [businesses, statusFilter, facultyFilter],
+  );
 
   const fromPath = `${location.pathname}${location.search}`;
 
@@ -125,7 +100,10 @@ export default function AdminEventReview() {
         <div className="flex items-end gap-2">
           <button
             type="button"
-            onClick={handleReset}
+            onClick={() => {
+              setStatusFilter("");
+              setFacultyFilter("");
+            }}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
             Reset
@@ -134,14 +112,14 @@ export default function AdminEventReview() {
 
         <div className="flex items-end justify-end">
           <span className="badge-primary">
-            {filteredEvents.length} event
-            {filteredEvents.length !== 1 ? "s" : ""}
+            {filteredBusinesses.length} business
+            {filteredBusinesses.length !== 1 ? "es" : ""}
           </span>
         </div>
       </div>
 
       <div className="px-6 py-5">
-        {!loading && filteredEvents.length === 0 && (
+        {!loading && filteredBusinesses.length === 0 && (
           <div className="empty-state mx-auto max-w-md py-8">
             <div className="empty-state-icon">
               <svg
@@ -154,61 +132,61 @@ export default function AdminEventReview() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={1.5}
-                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4 0h1m-1-4h1"
                 />
               </svg>
             </div>
-            <p className="empty-state-title">No Events in Review Queue</p>
+            <p className="empty-state-title">No Businesses in Review Queue</p>
             <p className="empty-state-description">
-              All pending events have been reviewed.
+              All pending businesses have been reviewed.
             </p>
           </div>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredEvents.map((eventItem) => (
+          {filteredBusinesses.map((item) => (
             <Link
-              to={`/event/${eventItem.id}`}
+              to={`/business/${item.id}`}
               state={{ from: fromPath }}
-              key={eventItem.id}
+              key={item.id}
               className="card-custom group"
             >
               <div className="flex items-center justify-between gap-2">
                 <h3 className="line-clamp-1 text-base font-semibold text-slate-900 group-hover:text-primary transition-colors">
-                  {eventItem.eventName || `Event #${eventItem.id}`}
+                  {item.eventName || `Business #${item.id}`}
                 </h3>
                 <span
                   className={`${
-                    statusBadgeClass[eventItem.status] ||
+                    statusBadgeClass[item.status] ||
                     "bg-gray-100 text-gray-700 border-gray-200"
                   } rounded-lg px-3 py-1.5 text-xs font-semibold capitalize border inline-flex items-center justify-center transition-all duration-200`}
                 >
-                  {eventItem.status || "pending"}
+                  {item.status || "pending"}
                 </span>
               </div>
 
               <p className="mt-3 line-clamp-2 text-sm text-gray-700">
-                {eventItem.majorReason || "No major reason provided."}
+                {item.majorReason || "No major reason provided."}
               </p>
 
               <div className="mt-4 space-y-2 text-xs text-gray-600">
                 <p>
                   <span className="font-semibold">Owner:</span>{" "}
-                  {eventItem.ownerName || "-"}
+                  {item.ownerName || "-"}
                 </p>
                 <p>
-                  <span className="font-semibold">Quarter:</span>{" "}
-                  {eventItem.quarter || "-"}
+                  <span className="font-semibold">Financial Year:</span>{" "}
+                  {item.quarter || "-"}
                 </p>
               </div>
 
-              {eventItem.rejectionMessage && (
+              {item.rejectionMessage && (
                 <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-2">
                   <p className="text-xs font-semibold text-amber-900 mb-1">
                     Reviewer's Comment
                   </p>
                   <p className="line-clamp-2 text-xs text-amber-800">
-                    {eventItem.rejectionMessage}
+                    {item.rejectionMessage}
                   </p>
                 </div>
               )}

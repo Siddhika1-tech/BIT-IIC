@@ -11,10 +11,6 @@ export default function Topbar() {
       return "Activities & Events";
     }
 
-    if (location.pathname.startsWith("/admin/review")) {
-      return "Event Reviews";
-    }
-
     if (location.pathname.startsWith("/admin/ideas")) {
       return "Idea / PoC Repository";
     }
@@ -43,6 +39,22 @@ export default function Topbar() {
       return "Innovation / Prototype Repository";
     }
 
+    if (location.pathname.startsWith("/admin/businesses")) {
+      return "Business Model / Startup";
+    }
+
+    if (location.pathname.startsWith("/admin/business-review")) {
+      return "Startup Reviews";
+    }
+
+    if (location.pathname.startsWith("/teacher/businesses")) {
+      return "Business Model / Startup";
+    }
+
+    if (location.pathname.startsWith("/teacher/businessdetails")) {
+      return "Business Submission";
+    }
+
     if (location.pathname.startsWith("/eventdetails")) {
       return "Activities & Events";
     }
@@ -65,6 +77,14 @@ export default function Topbar() {
 
     if (location.pathname.startsWith("/prototypedetails")) {
       return "Prototype Submission";
+    }
+
+    if (location.pathname.startsWith("/businessdetails")) {
+      return "Business Submission";
+    }
+
+    if (location.pathname.startsWith("/business/")) {
+      return "Business Details";
     }
 
     return "Dashboard";

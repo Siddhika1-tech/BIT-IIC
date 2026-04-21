@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getEventById } from "../../../config/api";
+import { getBusinessById, reviewBusinessByAdmin } from "../../../config/api";
 import Alert from "../../components/Alert";
 import { getAuthToken, getAuthUser } from "../../utils/auth";
 
@@ -8,28 +8,6 @@ const statusBadgeClass = {
   pending: "bg-yellow-100 text-yellow-700",
   approved: "bg-green-100 text-green-700",
   rejected: "bg-red-100 text-red-700",
-};
-
-const normalizeDate = (rawValue) => {
-  const value = String(rawValue || "").trim();
-  if (!value) {
-    return "";
-  }
-
-  const maybeDate = value.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(maybeDate)) {
-    return maybeDate;
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "";
-  }
-
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 };
 
 const prettifyKey = (key) =>
@@ -40,99 +18,55 @@ const prettifyKey = (key) =>
     .trim()
     .replace(/^./, (char) => char.toUpperCase());
 
-const renderDetails = (details = {}) => {
-  return Object.entries(details).map(([key, value]) => (
+const renderDetails = (details = {}) =>
+  Object.entries(details).map(([key, value]) => (
     <div key={key} className="rounded-md border border-gray-200 p-3">
       <p className="text-xs font-semibold uppercase text-gray-500">
         {prettifyKey(key)}
       </p>
-      <p className="mt-1 wrap-break-word text-sm text-gray-800">
+      <div className="mt-1 break-words text-sm text-gray-800">
         {(() => {
-          if (key === "fromDate" || key === "toDate") {
-            const dateValue = normalizeDate(value);
-            return dateValue || "-";
-          }
-
           if (value === null || value === undefined) {
             return "-";
           }
 
-          if (typeof value === "object") {
-            const objectValue = JSON.stringify(value);
-            return objectValue && objectValue !== "{}" ? objectValue : "-";
+          const textValue = String(value).trim();
+          if (!textValue) {
+            return "-";
           }
 
-          const textValue = String(value).trim();
-          return textValue || "-";
+          if (
+            textValue.startsWith("http://") ||
+            textValue.startsWith("https://") ||
+            textValue.startsWith("/uploads/")
+          ) {
+            return (
+              <a
+                href={textValue}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {textValue}
+              </a>
+            );
+          }
+
+          return textValue;
         })()}
-      </p>
+      </div>
     </div>
   ));
-};
-
-const getEventDateLabel = (eventData) => {
-  const fromDate = normalizeDate(eventData?.durationDetails?.fromDate);
-  const toDate = normalizeDate(eventData?.durationDetails?.toDate);
-
-  if (fromDate && toDate) {
-    return `${fromDate} to ${toDate}`;
-  }
-
-  if (fromDate) {
-    return fromDate;
-  }
-
-  return "-";
-};
-
-const getDurationLabel = (eventData) => {
-  const durationFromForm = String(
-    eventData?.durationDetails?.durationHours ?? "",
-  ).trim();
-  if (durationFromForm) {
-    return `${durationFromForm} hrs`;
-  }
-
-  const fromDateRaw = String(eventData?.durationDetails?.fromDate ?? "").trim();
-  const toDateRaw = String(eventData?.durationDetails?.toDate ?? "").trim();
-  if (!fromDateRaw || !toDateRaw) {
-    return "-";
-  }
-
-  const fromDateTime = new Date(fromDateRaw);
-  const toDateTime = new Date(toDateRaw);
-
-  if (
-    Number.isNaN(fromDateTime.getTime()) ||
-    Number.isNaN(toDateTime.getTime())
-  ) {
-    return "-";
-  }
-
-  const hours =
-    (toDateTime.getTime() - fromDateTime.getTime()) / (1000 * 60 * 60);
-  if (!Number.isFinite(hours) || hours < 0) {
-    return "-";
-  }
-
-  if (hours === 0) {
-    return "0 hr";
-  }
-
-  return `${hours.toFixed(1)} hrs`;
-};
 
 const detailSteps = [
-  { key: "programDetails", label: "Program" },
-  { key: "durationDetails", label: "Duration" },
+  { key: "businessDetails", label: "Business" },
   { key: "overview", label: "Overview" },
-  { key: "speakerDetails", label: "Speaker" },
-  { key: "bipPortal", label: "BIP Portal" },
-  { key: "faculty", label: "Faculty" },
+  { key: "analysis", label: "Analysis" },
+  { key: "attachments", label: "Attachments" },
 ];
 
-export default function EventOverview() {
-  const { eventId } = useParams();
+export default function BusinessDetails() {
+  const { businessId } = useParams();
   const location = useLocation();
   const token = useMemo(() => getAuthToken(), []);
   const user = useMemo(() => getAuthUser(), []);
@@ -142,46 +76,106 @@ export default function EventOverview() {
     location.state.from.startsWith("/")
       ? location.state.from
       : isAdmin
-        ? "/admin/review"
-        : "/teacher/dashboard";
+        ? "/admin/business-review"
+        : "/teacher/businesses";
 
-  const [eventData, setEventData] = useState(null);
+  const [businessData, setBusinessData] = useState(null);
   const [activeDetailStep, setActiveDetailStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [rejectMessage, setRejectMessage] = useState("");
+  const [processingReview, setProcessingReview] = useState(false);
+  const [messageInitialized, setMessageInitialized] = useState(false);
   const [alertState, setAlertState] = useState({
     isOpen: false,
     message: "",
     severity: "info",
   });
+
   const detailStepProgress =
     detailSteps.length > 1
       ? (activeDetailStep / (detailSteps.length - 1)) * 100
       : 0;
 
-  const loadEvent = async () => {
-    if (!eventId) {
+  useEffect(() => {
+    const loadBusiness = async () => {
+      if (!businessId) {
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const payload = await getBusinessById({ token, businessId });
+        setBusinessData(payload.data || null);
+        if (!messageInitialized) {
+          setRejectMessage(payload.data?.rejectionMessage || "");
+          setMessageInitialized(true);
+        }
+        setActiveDetailStep(0);
+      } catch (error) {
+        setAlertState({
+          isOpen: true,
+          message: error.message || "Failed to fetch business details.",
+          severity: "error",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadBusiness();
+  }, [businessId, token]);
+
+  const handleReview = async (action) => {
+    if (!isAdmin || !businessId) {
       return;
     }
 
-    setLoading(true);
+    setProcessingReview(true);
     try {
-      const payload = await getEventById({ token, eventId });
-      setEventData(payload.data || null);
-      setActiveDetailStep(0);
+      const payload = await reviewBusinessByAdmin({
+        token,
+        businessId,
+        action,
+        rejectionMessage: rejectMessage,
+      });
+
+      setAlertState({
+        isOpen: true,
+        message: payload.message || "Business updated.",
+        severity: "success",
+      });
+
+      const reviewData = payload?.data || {};
+      setBusinessData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          status: reviewData.status || previous.status,
+          rejectionMessage:
+            reviewData.rejection_message !== undefined
+              ? reviewData.rejection_message
+              : previous.rejectionMessage,
+          reviewedAt: reviewData.reviewed_at || previous.reviewedAt,
+          approvedAt: reviewData.approved_at || previous.approvedAt,
+          rejectedAt: reviewData.rejected_at || previous.rejectedAt,
+        };
+      });
+      if (reviewData.rejection_message !== undefined) {
+        setRejectMessage(reviewData.rejection_message || "");
+      }
     } catch (error) {
       setAlertState({
         isOpen: true,
-        message: error.message || "Failed to fetch event details.",
+        message: error.message || "Failed to update review.",
         severity: "error",
       });
     } finally {
-      setLoading(false);
+      setProcessingReview(false);
     }
   };
-
-  useEffect(() => {
-    loadEvent();
-  }, [eventId, token]);
 
   return (
     <section className="-m-6 min-h-full bg-white px-6 py-5">
@@ -192,56 +186,92 @@ export default function EventOverview() {
         >
           Back
         </Link>
-        {eventData?.status && (
+        {businessData?.status && (
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-              statusBadgeClass[eventData.status] || "bg-gray-100 text-gray-700"
+              statusBadgeClass[businessData.status] ||
+              "bg-gray-100 text-gray-700"
             }`}
           >
-            {eventData.status}
+            {businessData.status}
           </span>
         )}
       </div>
 
       {loading && <div className="text-sm text-gray-500">Loading...</div>}
 
-      {!loading && eventData && (
+      {!loading && businessData && (
         <div className="space-y-6">
           <div className="rounded-md border border-gray-200 p-5">
             <h2 className="text-lg font-semibold text-gray-900">
-              {eventData.eventName || `Event #${eventData.id}`}
+              {businessData.eventName || `Business #${businessData.id}`}
             </h2>
             <p className="mt-3 text-sm text-gray-700">
-              {eventData.majorReason || "No major reason provided."}
+              {businessData.majorReason || "No major reason provided."}
             </p>
 
             <div className="mt-4 grid gap-3 text-xs text-gray-700 md:grid-cols-2 xl:grid-cols-4">
               <p>
-                <span className="font-semibold">Quarter:</span>{" "}
-                {eventData.quarter || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Event Date:</span>{" "}
-                {getEventDateLabel(eventData)}
-              </p>
-              <p>
-                <span className="font-semibold">Duration:</span>{" "}
-                {getDurationLabel(eventData)}
+                <span className="font-semibold">Financial Year:</span>{" "}
+                {businessData.quarter || "-"}
               </p>
               <p>
                 <span className="font-semibold">Owner:</span>{" "}
-                {eventData.ownerName || "-"}
+                {businessData.ownerName || "-"}
               </p>
               <p>
                 <span className="font-semibold">Email:</span>{" "}
-                {eventData.ownerEmail || "-"}
+                {businessData.ownerEmail || "-"}
+              </p>
+              <p>
+                <span className="font-semibold">Submitted:</span>{" "}
+                {businessData.createdAt
+                  ? new Date(businessData.createdAt).toLocaleString()
+                  : "-"}
+              </p>
+              <p>
+                <span className="font-semibold">Reviewed By:</span>{" "}
+                {businessData.reviewerName || "-"}
               </p>
               <p>
                 <span className="font-semibold">Rejection Msg:</span>{" "}
-                {eventData.rejectionMessage || "-"}
+                {businessData.rejectionMessage || "-"}
               </p>
             </div>
           </div>
+
+          {isAdmin && (
+            <div className="rounded-md border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Review Action
+              </h3>
+              <textarea
+                value={rejectMessage}
+                onChange={(event) => setRejectMessage(event.target.value)}
+                rows={4}
+                className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                placeholder="Optional reviewer comment"
+              />
+              <div className="mt-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleReview("approve")}
+                  disabled={processingReview}
+                  className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-70"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReview("reject")}
+                  disabled={processingReview}
+                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-70"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-md border border-gray-200 p-5">
             <h3 className="mb-3 text-sm font-semibold text-gray-900">
@@ -296,7 +326,7 @@ export default function EventOverview() {
 
             <div className="grid gap-3 md:grid-cols-2">
               {renderDetails(
-                eventData[detailSteps[activeDetailStep]?.key] || {},
+                businessData[detailSteps[activeDetailStep]?.key] || {},
               )}
             </div>
 

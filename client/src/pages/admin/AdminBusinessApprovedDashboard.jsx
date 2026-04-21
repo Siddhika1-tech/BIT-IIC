@@ -1,9 +1,9 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { CirclePlus } from "lucide-react";
 import {
-  getAdminIdeaReviewQueue,
-  getAdminApprovedIdeaFilterOptions,
+  getAdminBusinessReviewQueue,
+  getAdminApprovedBusinessFilterOptions,
 } from "../../../config/api";
 import Alert from "../../components/Alert";
 import SearchableSelect from "../../components/SearchableSelect";
@@ -31,52 +31,7 @@ const normalizeDate = (rawValue) => {
   return `${year}-${month}-${day}`;
 };
 
-const getEventDateLabel = (eventItem) => {
-  const fromDate = normalizeDate(eventItem.fromDate);
-  const toDate = normalizeDate(eventItem.toDate);
-
-  if (fromDate && toDate) {
-    return `${fromDate} to ${toDate}`;
-  }
-
-  if (fromDate) {
-    return fromDate;
-  }
-
-  return "-";
-};
-
-const getDurationLabel = (eventItem) => {
-  const fromDateRaw = String(eventItem.fromDate || "").trim();
-  const toDateRaw = String(eventItem.toDate || "").trim();
-
-  if (!fromDateRaw || !toDateRaw) {
-    return "-";
-  }
-
-  const fromDateTime = new Date(fromDateRaw);
-  const toDateTime = new Date(toDateRaw);
-  if (
-    Number.isNaN(fromDateTime.getTime()) ||
-    Number.isNaN(toDateTime.getTime())
-  ) {
-    return "-";
-  }
-
-  const hours =
-    (toDateTime.getTime() - fromDateTime.getTime()) / (1000 * 60 * 60);
-  if (!Number.isFinite(hours) || hours < 0) {
-    return "-";
-  }
-
-  if (hours === 0) {
-    return "0 hr";
-  }
-
-  return `${hours.toFixed(1)} hrs`;
-};
-
-export default function AdminIdeaApprovedDashboard() {
+export default function AdminBusinessApprovedDashboard() {
   const token = useMemo(() => getAuthToken(), []);
   const location = useLocation();
 
@@ -88,7 +43,7 @@ export default function AdminIdeaApprovedDashboard() {
   const [facultyName, setFacultyName] = useState("");
   const [options, setOptions] = useState({ quarters: [], faculties: [] });
   const [loading, setLoading] = useState(false);
-  const [events, setEvents] = useState([]);
+  const [businesses, setBusinesses] = useState([]);
   const [alertState, setAlertState] = useState({
     isOpen: false,
     message: "",
@@ -108,12 +63,12 @@ export default function AdminIdeaApprovedDashboard() {
 
       setLoading(true);
       try {
-        const [eventsPayload, optionsPayload] = await Promise.all([
-          getAdminIdeaReviewQueue(token),
-          getAdminApprovedIdeaFilterOptions(token),
+        const [businessesPayload, optionsPayload] = await Promise.all([
+          getAdminBusinessReviewQueue(token),
+          getAdminApprovedBusinessFilterOptions(token),
         ]);
 
-        setEvents(eventsPayload.data || []);
+        setBusinesses(businessesPayload.data || []);
         setOptions({
           quarters: optionsPayload.data?.quarters || [],
           faculties: optionsPayload.data?.faculties || [],
@@ -121,7 +76,7 @@ export default function AdminIdeaApprovedDashboard() {
       } catch (error) {
         setAlertState({
           isOpen: true,
-          message: error.message || "Failed to fetch ideas.",
+          message: error.message || "Failed to fetch businesses.",
           severity: "error",
         });
       } finally {
@@ -142,74 +97,44 @@ export default function AdminIdeaApprovedDashboard() {
     setDate("");
   }, [useSingleDate]);
 
-  const filteredEvents = useMemo(() => {
-    return events.filter((eventItem) => {
-      if (quarter && String(eventItem.quarter || "") !== quarter) {
-        return false;
-      }
-
-      if (facultyName) {
-        const facultyFields = [
-          eventItem.ownerName,
-          eventItem.faculty1,
-          eventItem.faculty2,
-          eventItem.faculty3,
-          eventItem.facultyApplied,
-        ]
-          .filter(Boolean)
-          .map((value) => String(value).toLowerCase());
+  const filteredBusinesses = useMemo(
+    () =>
+      businesses.filter((item) => {
+        if (quarter && String(item.quarter || "") !== quarter) {
+          return false;
+        }
 
         if (
-          !facultyFields.some((value) =>
-            value.includes(facultyName.toLowerCase()),
-          )
+          facultyName &&
+          !String(item.ownerName || "")
+            .toLowerCase()
+            .includes(facultyName.toLowerCase())
         ) {
           return false;
         }
-      }
 
-      const eventFrom = normalizeDate(eventItem.fromDate);
-      const eventTo = normalizeDate(eventItem.toDate) || eventFrom;
+        const submittedDate = normalizeDate(item.createdAt);
 
-      if (useSingleDate && date) {
-        const targetDate = normalizeDate(date);
+        if (useSingleDate && date) {
+          return submittedDate === normalizeDate(date);
+        }
+
         if (
-          !targetDate ||
-          !eventFrom ||
-          !eventTo ||
-          targetDate < eventFrom ||
-          targetDate > eventTo
+          !useSingleDate &&
+          fromDate &&
+          submittedDate < normalizeDate(fromDate)
         ) {
           return false;
         }
-      }
 
-      if (!useSingleDate && fromDate) {
-        const targetFromDate = normalizeDate(fromDate);
-        if (!targetFromDate || !eventTo || eventTo < targetFromDate) {
+        if (!useSingleDate && toDate && submittedDate > normalizeDate(toDate)) {
           return false;
         }
-      }
 
-      if (!useSingleDate && toDate) {
-        const targetToDate = normalizeDate(toDate);
-        if (!targetToDate || !eventFrom || eventFrom > targetToDate) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [events, quarter, useSingleDate, date, fromDate, toDate, facultyName]);
-
-  const handleResetFilters = () => {
-    setQuarter("");
-    setUseSingleDate(false);
-    setDate("");
-    setFromDate("");
-    setToDate("");
-    setFacultyName("");
-  };
+        return true;
+      }),
+    [businesses, quarter, useSingleDate, date, fromDate, toDate, facultyName],
+  );
 
   const fromPath = `${location.pathname}${location.search}`;
 
@@ -218,18 +143,18 @@ export default function AdminIdeaApprovedDashboard() {
       <div className="border-b border-gray-200 bg-white px-8 py-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
-            <h1 className="heading-xl">My Ideas & PoCs</h1>
+            <h1 className="heading-xl">My Startups</h1>
             <p className="text-muted">
-              View and manage your filed ideas & PoC entries
+              All your registered ventures and their status in both users
             </p>
           </div>
 
           <Link
-            to="/ideadetails"
+            to="/businessdetails"
             className="btn-primary-custom inline-flex items-center gap-2 whitespace-nowrap"
           >
             <CirclePlus size={18} strokeWidth={2.25} />
-            <span>New Ideas</span>
+            <span>New Business</span>
           </Link>
         </div>
       </div>
@@ -237,16 +162,16 @@ export default function AdminIdeaApprovedDashboard() {
       <div className="border-b border-gray-200 bg-white px-8 py-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <SearchableSelect
-            label="Quarter"
+            label="Financial Year"
             value={quarter}
             onChange={setQuarter}
             options={options.quarters}
-            emptyLabel="All Quarters"
+            emptyLabel="All Financial Years"
           />
 
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-900">
-              Idea Date
+              Submitted Date
             </label>
             <input
               type="date"
@@ -293,12 +218,12 @@ export default function AdminIdeaApprovedDashboard() {
         </div>
 
         <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <label className="flex items-center gap-3 cursor-pointer group">
+          <label className="flex cursor-pointer items-center gap-3 group">
             <input
               type="checkbox"
               checked={useSingleDate}
               onChange={(event) => setUseSingleDate(event.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary-light cursor-pointer"
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary-light"
             />
             <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
               Use exact date search (turns off From/To range)
@@ -306,7 +231,14 @@ export default function AdminIdeaApprovedDashboard() {
           </label>
           <button
             type="button"
-            onClick={handleResetFilters}
+            onClick={() => {
+              setQuarter("");
+              setUseSingleDate(false);
+              setDate("");
+              setFromDate("");
+              setToDate("");
+              setFacultyName("");
+            }}
             className="btn-reset-custom"
             disabled={loading}
           >
@@ -318,13 +250,29 @@ export default function AdminIdeaApprovedDashboard() {
       <div className="px-8 py-8">
         <div className="mb-6 flex items-center justify-between">
           <span className="badge-primary text-base">
-            {filteredEvents.length} idea{filteredEvents.length !== 1 ? "s" : ""}
+            {filteredBusinesses.length} business
+            {filteredBusinesses.length !== 1 ? "es" : ""}
           </span>
         </div>
 
-        {!loading && filteredEvents.length === 0 && (
+        {!loading && filteredBusinesses.length === 0 && (
           <div className="empty-state">
-            <p className="empty-state-title">No Ideas Found</p>
+            <div className="empty-state-icon">
+              <svg
+                className="mx-auto"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4 0h1m-1-4h1"
+                />
+              </svg>
+            </div>
+            <p className="empty-state-title">No Businesses Found</p>
             <p className="empty-state-description">
               Try adjusting your filters.
             </p>
@@ -332,56 +280,48 @@ export default function AdminIdeaApprovedDashboard() {
         )}
 
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {filteredEvents.map((eventItem) => (
+          {filteredBusinesses.map((item) => (
             <Link
-              to={`/idea/${eventItem.id}`}
+              to={`/business/${item.id}`}
               state={{ from: fromPath }}
-              key={eventItem.id}
+              key={item.id}
               className="card-custom group"
             >
               <div className="flex items-start justify-between gap-3">
-                <h3 className="text-base font-semibold text-slate-900 group-hover:text-primary transition-colors line-clamp-1">
-                  {eventItem.eventName || `Idea #${eventItem.id}`}
+                <h3 className="line-clamp-1 text-base font-semibold text-slate-900 transition-colors group-hover:text-primary">
+                  {item.eventName || `Business #${item.id}`}
                 </h3>
                 <span
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize flex-shrink-0 border inline-flex items-center justify-center transition-all duration-200 ${
-                    eventItem.status === "rejected"
+                  className={`${
+                    item.status === "rejected"
                       ? "bg-red-50 text-red-700 border-red-200"
                       : "bg-green-50 text-green-700 border-green-200"
-                  }`}
+                  } rounded-lg px-3 py-1.5 text-xs font-semibold capitalize flex-shrink-0 border inline-flex items-center justify-center transition-all duration-200`}
                 >
-                  {eventItem.status || "approved"}
+                  {item.status || "approved"}
                 </span>
               </div>
 
-              <p className="mt-3 text-sm text-gray-700 line-clamp-2">
-                {eventItem.majorReason || "No major reason provided."}
+              <p className="mt-3 line-clamp-2 text-sm text-gray-700">
+                {item.majorReason || "No major reason provided."}
               </p>
 
-              <div className="mt-5 space-y-2 text-xs text-gray-600 border-t border-gray-100 pt-4">
+              <div className="mt-5 space-y-2 border-t border-gray-100 pt-4 text-xs text-gray-600">
                 <div className="flex justify-between">
-                  <span className="font-semibold">Quarter:</span>
-                  <span className="text-gray-700">
-                    {eventItem.quarter || "-"}
-                  </span>
+                  <span className="font-semibold">Financial Year:</span>
+                  <span className="text-gray-700">{item.quarter || "-"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-semibold">Date:</span>
+                  <span className="font-semibold">Submitted:</span>
                   <span className="text-gray-700">
-                    {getEventDateLabel(eventItem)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold">Duration:</span>
-                  <span className="text-gray-700">
-                    {getDurationLabel(eventItem)}
+                    {item.createdAt
+                      ? new Date(item.createdAt).toLocaleDateString()
+                      : "-"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold">Owner:</span>
-                  <span className="text-gray-700">
-                    {eventItem.ownerName || "-"}
-                  </span>
+                  <span className="text-gray-700">{item.ownerName || "-"}</span>
                 </div>
               </div>
             </Link>
