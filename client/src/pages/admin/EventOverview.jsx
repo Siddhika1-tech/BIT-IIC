@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getEventById } from "../../../config/api";
+import { getEventById, reviewEventByAdmin } from "../../../config/api";
 import Alert from "../../components/Alert";
 import { getAuthToken, getAuthUser } from "../../utils/auth";
 
@@ -148,6 +148,9 @@ export default function EventOverview() {
   const [eventData, setEventData] = useState(null);
   const [activeDetailStep, setActiveDetailStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [rejectMessage, setRejectMessage] = useState("");
+  const [approvalMessage, setApprovalMessage] = useState("");
+  const [processingReview, setProcessingReview] = useState(false);
   const [alertState, setAlertState] = useState({
     isOpen: false,
     message: "",
@@ -167,6 +170,8 @@ export default function EventOverview() {
     try {
       const payload = await getEventById({ token, eventId });
       setEventData(payload.data || null);
+      setRejectMessage(payload.data?.rejectionMessage || "");
+      setApprovalMessage(payload.data?.approvalMessage || "");
       setActiveDetailStep(0);
     } catch (error) {
       setAlertState({
@@ -182,6 +187,73 @@ export default function EventOverview() {
   useEffect(() => {
     loadEvent();
   }, [eventId, token]);
+
+  const handleReview = async (action) => {
+    if (!isAdmin || !eventId) {
+      return;
+    }
+
+    setProcessingReview(true);
+    try {
+      const payload = await reviewEventByAdmin({
+        token,
+        eventId,
+        action,
+        rejectionMessage: action === "reject" ? rejectMessage : "",
+        approvalMessage: action === "approve" ? approvalMessage : "",
+      });
+
+      setAlertState({
+        isOpen: true,
+        message: payload.message || "Event updated.",
+        severity: "success",
+      });
+
+      const reviewData = payload?.data || {};
+      const nextIqacStatus =
+        reviewData.iqacVerification ||
+        (action === "approve" ? "Approved" : "Rejected");
+      setEventData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          status: reviewData.status || previous.status,
+          bipPortal: {
+            ...(previous.bipPortal || {}),
+            iqacVerification: nextIqacStatus,
+          },
+          rejectionMessage:
+            reviewData.rejection_message !== undefined
+              ? reviewData.rejection_message
+              : previous.rejectionMessage,
+          approvalMessage:
+            reviewData.approval_message !== undefined
+              ? reviewData.approval_message
+              : previous.approvalMessage,
+          reviewedAt: reviewData.reviewed_at || previous.reviewedAt,
+          approvedAt: reviewData.approved_at || previous.approvedAt,
+          rejectedAt: reviewData.rejected_at || previous.rejectedAt,
+        };
+      });
+
+      if (action === "approve") {
+        setRejectMessage("");
+      } else {
+        setApprovalMessage("");
+      }
+    } catch (error) {
+      setAlertState({
+        isOpen: true,
+        message: error.message || "Failed to update review.",
+        severity: "error",
+      });
+    } finally {
+      setProcessingReview(false);
+    }
+  };
 
   return (
     <section className="-m-6 min-h-full bg-white px-6 py-5">
@@ -240,8 +312,82 @@ export default function EventOverview() {
                 <span className="font-semibold">Rejection Msg:</span>{" "}
                 {eventData.rejectionMessage || "-"}
               </p>
+              <p>
+                <span className="font-semibold">Approval Msg:</span>{" "}
+                {eventData.approvalMessage || "-"}
+              </p>
             </div>
           </div>
+
+          {isAdmin && (
+            <div className="rounded-md border border-gray-200 p-5">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Review Action
+              </h3>
+
+              {eventData.status === "pending" && (
+                <>
+                  <div className="mt-4">
+                    <label className="block text-xs font-semibold text-gray-700 mb-2">
+                      Approval Message (Optional)
+                    </label>
+                    <textarea
+                      value={approvalMessage}
+                      onChange={(event) =>
+                        setApprovalMessage(event.target.value)
+                      }
+                      rows={3}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      placeholder="Enter approval message"
+                    />
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="block text-xs font-semibold text-gray-700 mb-2">
+                      Rejection Message (Optional)
+                    </label>
+                    <textarea
+                      value={rejectMessage}
+                      onChange={(event) => setRejectMessage(event.target.value)}
+                      rows={3}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      placeholder="Enter rejection message"
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleReview("approve")}
+                      disabled={processingReview}
+                      className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-70"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleReview("reject")}
+                      disabled={processingReview}
+                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-70"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {eventData.status !== "pending" && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                  <p className="text-xs text-gray-600">
+                    This event has already been reviewed with status:{" "}
+                    <span className="font-semibold capitalize">
+                      {eventData.status}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="rounded-md border border-gray-200 p-5">
             <h3 className="mb-3 text-sm font-semibold text-gray-900">

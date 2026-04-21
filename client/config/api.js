@@ -393,7 +393,7 @@ export const reviewEventByAdmin = async ({
   eventId,
   action,
   rejectionMessage = "",
-  approverComment = "",
+  approvalMessage = "",
 }) => {
   const response = await fetch(
     `${API_URLS.eventDetails}/admin/${eventId}/review`,
@@ -406,7 +406,7 @@ export const reviewEventByAdmin = async ({
       body: JSON.stringify({
         action,
         ...(rejectionMessage && { rejectionMessage }),
-        ...(approverComment && { approverComment }),
+        ...(approvalMessage && { approvalMessage }),
       }),
     },
   );

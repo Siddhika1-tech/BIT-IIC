@@ -77,6 +77,8 @@ const normalizeEventRow = (row) => ({
   userId: row.user_id,
   status: row.status,
   rejectionMessage: row.rejection_message,
+  approvalMessage: row.approval_message,
+  reviewerMessage: row.rejection_message || row.approval_message,
   createdAt: row.created_at,
   reviewedAt: row.reviewed_at,
   approvedAt: row.approved_at,
@@ -102,6 +104,7 @@ const baseEventSelect = `
     ed.user_id,
     ed.status,
     ed.rejection_message,
+    ed.approval_message,
     ed.created_at,
     ed.reviewed_at,
     ed.approved_at,
@@ -549,6 +552,7 @@ export async function reviewEventByAdmin(request, response, next) {
     const rejectionMessage = String(
       request.body?.rejectionMessage ?? "",
     ).trim();
+    const approvalMessage = String(request.body?.approvalMessage ?? "").trim();
 
     if (!Number.isFinite(eventId) || eventId <= 0) {
       response.status(400).json({ message: "Invalid event id." });
@@ -592,23 +596,30 @@ export async function reviewEventByAdmin(request, response, next) {
     const adminUserId = getNumericUserId(request.user?.id);
 
     const nextIqacStatus = nextStatus === "approved" ? "Approved" : "Rejected";
+    const finalRejectionMessage =
+      nextStatus === "rejected" ? rejectionMessage || null : null;
+    const finalApprovalMessage =
+      nextStatus === "approved" ? approvalMessage || null : null;
+
     const updatedRows = await db.unsafe(
       `
       UPDATE event_details
       SET
         status = $1,
         rejection_message = $2,
-        reviewed_by = $3,
+        approval_message = $3,
+        reviewed_by = $4,
         reviewed_at = NOW(),
         approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE NULL END,
         rejected_at = CASE WHEN $1 = 'rejected' THEN NOW() ELSE NULL END,
-        bip_portal = jsonb_set(COALESCE(bip_portal, '{}'::jsonb), '{iqacVerification}', to_jsonb($5::text), true)
-      WHERE id = $4
-      RETURNING id, status, rejection_message, reviewed_at, approved_at, rejected_at
+        bip_portal = jsonb_set(COALESCE(bip_portal, '{}'::jsonb), '{iqacVerification}', to_jsonb($6::text), true)
+      WHERE id = $5
+      RETURNING id, status, rejection_message, approval_message, reviewed_at, approved_at, rejected_at
       `,
       [
         nextStatus,
-        rejectionMessage || null,
+        finalRejectionMessage,
+        finalApprovalMessage,
         adminUserId,
         eventId,
         nextIqacStatus,
@@ -616,10 +627,12 @@ export async function reviewEventByAdmin(request, response, next) {
     );
 
     const updatedEvent = updatedRows[0];
+    const messageToDisplay =
+      action === "reject" ? rejectionMessage : approvalMessage;
     const emailQueued = triggerReviewNotification({
       eventRow,
       nextStatus,
-      rejectionMessage,
+      rejectionMessage: messageToDisplay,
     });
 
     response.status(200).json({

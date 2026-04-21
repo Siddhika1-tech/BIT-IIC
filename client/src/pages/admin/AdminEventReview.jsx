@@ -165,56 +165,95 @@ export default function AdminEventReview() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredEvents.map((eventItem) => (
-            <Link
-              to={`/event/${eventItem.id}`}
-              state={{ from: fromPath }}
-              key={eventItem.id}
-              className="card-custom group"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="line-clamp-1 text-base font-semibold text-slate-900 group-hover:text-primary transition-colors">
-                  {eventItem.eventName || `Event #${eventItem.id}`}
-                </h3>
-                <span
-                  className={`${
-                    statusBadgeClass[eventItem.status] ||
-                    "bg-gray-100 text-gray-700 border-gray-200"
-                  } rounded-lg px-3 py-1.5 text-xs font-semibold capitalize border inline-flex items-center justify-center transition-all duration-200`}
-                >
-                  {eventItem.status || "pending"}
-                </span>
-              </div>
-
-              <p className="mt-3 line-clamp-2 text-sm text-gray-700">
-                {eventItem.majorReason || "No major reason provided."}
-              </p>
-
-              <div className="mt-4 space-y-2 text-xs text-gray-600">
-                <p>
-                  <span className="font-semibold">Owner:</span>{" "}
-                  {eventItem.ownerName || "-"}
-                </p>
-                <p>
-                  <span className="font-semibold">Quarter:</span>{" "}
-                  {eventItem.quarter || "-"}
-                </p>
-              </div>
-
-              {eventItem.rejectionMessage && (
-                <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-2">
-                  <p className="text-xs font-semibold text-amber-900 mb-1">
+        {filteredEvents.length > 0 && (
+          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
+                    Event Name
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
+                    Owner
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
+                    Quarter
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
                     Reviewer's Comment
-                  </p>
-                  <p className="line-clamp-2 text-xs text-amber-800">
-                    {eventItem.rejectionMessage}
-                  </p>
-                </div>
-              )}
-            </Link>
-          ))}
-        </div>
+                  </th>
+                  <th className="px-6 py-3 text-left font-semibold text-gray-900">
+                    Created Date
+                  </th>
+                  <th className="px-6 py-3 text-center font-semibold text-gray-900">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredEvents.map((eventItem) => (
+                  <tr
+                    key={eventItem.id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <td className="px-6 py-4 text-gray-900 font-medium">
+                      {eventItem.eventName || `Event #${eventItem.id}`}
+                    </td>
+                    <td className="px-6 py-4 text-gray-700">
+                      {eventItem.ownerName || "-"}
+                    </td>
+                    <td className="px-6 py-4 text-gray-700">
+                      {eventItem.quarter || "-"}
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 max-w-xs truncate">
+                      {eventItem.majorReason || "-"}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`${
+                          statusBadgeClass[eventItem.status] ||
+                          "bg-gray-100 text-gray-700 border-gray-200"
+                        } rounded-full px-3 py-1 text-xs font-semibold capitalize border inline-flex`}
+                      >
+                        {eventItem.status || "pending"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 max-w-xs">
+                      <span className="text-xs font-semibold text-gray-600 block mb-1">
+                        {eventItem.status === "approved" && "Approved"}
+                        {eventItem.status === "rejected" && "Rejected"}
+                        {eventItem.status === "pending" && "Pending"}
+                      </span>
+                      <span className="text-xs text-gray-600 line-clamp-2">
+                        {eventItem.reviewerMessage || "-"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-700">
+                      {eventItem.createdAt
+                        ? new Date(eventItem.createdAt).toLocaleDateString()
+                        : "-"}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <Link
+                        to={`/event/${eventItem.id}`}
+                        state={{ from: fromPath }}
+                        className="text-primary hover:text-primary-dark font-semibold hover:underline"
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <Alert
