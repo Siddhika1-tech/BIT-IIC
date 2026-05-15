@@ -4,8 +4,7 @@ import { sendEmail } from "../utils/mail.js";
 
 const getBodyValue = (body, key) => String(body?.[key] ?? "").trim();
 
-const getBodyBoolean = (body, key) =>
-  String(body?.[key] ?? "").toLowerCase() === "true";
+const getBodyBoolean = (body, key) => String(body?.[key] ?? "").toLowerCase() === "true";
 
 const getBodyNumber = (body, key) => {
   const rawValue = String(body?.[key] ?? "").trim();
@@ -33,17 +32,12 @@ const getNumericUserId = (requestUserId) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const triggerReviewNotification = ({
-  prototypeRow,
-  nextStatus,
-  rejectionMessage,
-}) => {
+const triggerReviewNotification = ({ prototypeRow, nextStatus, rejectionMessage }) => {
   if (!prototypeRow?.owner_email) {
     return false;
   }
 
-  const prototypeName =
-    prototypeRow.event_name || `Prototype #${prototypeRow.id}`;
+  const prototypeName = prototypeRow.event_name || `Prototype #${prototypeRow.id}`;
   const decisionLabel = nextStatus === "approved" ? "approved" : "rejected";
 
   const subject = `Your Prototype "${prototypeName}" was ${decisionLabel}`;
@@ -64,10 +58,7 @@ const triggerReviewNotification = ({
     subject,
     text: textParts.join("\n"),
   }).catch((error) => {
-    console.error(
-      "Failed to send review notification email:",
-      error?.message || error,
-    );
+    console.error("Failed to send review notification email:", error?.message || error);
   });
 
   return true;
@@ -90,6 +81,8 @@ const normalizePrototypeRow = (row) => ({
   ownerName: row.owner_name,
   ownerEmail: row.owner_email,
   reviewerName: row.reviewer_name,
+  innovationTitle: row.innovation_title,
+  teamLeadName: row.team_lead_name,
   faculty1: row.faculty_1,
   faculty2: row.faculty_2,
   faculty3: row.faculty_3,
@@ -106,7 +99,7 @@ const basePrototypeSelect = `
     id.reviewed_at,
     id.approved_at,
     id.rejected_at,
-    COALESCE(id.program_details->>'programActivityName', '') AS event_name,
+    COALESCE(id.program_details->>'innovationTitle', id.program_details->>'programActivityName', '') AS event_name,
     COALESCE(id.program_details->>'aboutEvent', '') AS major_reason,
     COALESCE(id.program_details->>'quarter', '') AS quarter,
     COALESCE(id.duration_details->>'fromDate', '') AS from_date,
@@ -114,6 +107,8 @@ const basePrototypeSelect = `
     COALESCE(owner.name, '') AS owner_name,
     COALESCE(owner.email, '') AS owner_email,
     COALESCE(reviewer.name, '') AS reviewer_name,
+    COALESCE(id.program_details->>'innovationTitle', '') AS innovation_title,
+    COALESCE(id.program_details->>'teamLeadName', '') AS team_lead_name,
     COALESCE(id.faculty->>'faculty1', '') AS faculty_1,
     COALESCE(id.faculty->>'faculty2', '') AS faculty_2,
     COALESCE(id.faculty->>'faculty3', '') AS faculty_3,
@@ -174,14 +169,8 @@ export async function createPrototypeDetails(request, response, next) {
     const analysis = {
       utilityAnalysis: getBodyValue(body, "utilityAnalysis"),
       scalabilityAnalysis: getBodyValue(body, "scalabilityAnalysis"),
-      economicSustainabilityAnalysis: getBodyValue(
-        body,
-        "economicSustainabilityAnalysis",
-      ),
-      environmentalSustainabilityAnalysis: getBodyValue(
-        body,
-        "environmentalSustainabilityAnalysis",
-      ),
+      economicSustainabilityAnalysis: getBodyValue(body, "economicSustainabilityAnalysis"),
+      environmentalSustainabilityAnalysis: getBodyValue(body, "environmentalSustainabilityAnalysis"),
     };
 
     const speakerDetails = {
@@ -197,24 +186,12 @@ export async function createPrototypeDetails(request, response, next) {
       ipPatentAssociated: getBodyValue(body, "ipPatentAssociated"),
       ipPatentDocument: getUploadedFilePath(files, "ipPatentDocument"),
       innovationGrantSupport: getBodyValue(body, "innovationGrantSupport"),
-      innovationGrantDocument: getUploadedFilePath(
-        files,
-        "innovationGrantDocument",
-      ),
+      innovationGrantDocument: getUploadedFilePath(files, "innovationGrantDocument"),
       recognitionsObtained: getBodyValue(body, "recognitionsObtained"),
-      latestAchievementDocument: getUploadedFilePath(
-        files,
-        "latestAchievementDocument",
-      ),
+      latestAchievementDocument: getUploadedFilePath(files, "latestAchievementDocument"),
       commercializedSolution: getBodyValue(body, "commercializedSolution"),
-      startupRegistrationDocument: getUploadedFilePath(
-        files,
-        "startupRegistrationDocument",
-      ),
-      incubationSupportReceived: getBodyValue(
-        body,
-        "incubationSupportReceived",
-      ),
+      startupRegistrationDocument: getUploadedFilePath(files, "startupRegistrationDocument"),
+      incubationSupportReceived: getBodyValue(body, "incubationSupportReceived"),
       incubationUnitName: getBodyValue(body, "incubationUnitName"),
       innovationVideoUrl: getBodyValue(body, "innovationVideoUrl"),
       innovationPhotograph: getUploadedFilePath(files, "innovationPhotograph"),
@@ -289,25 +266,17 @@ export async function getApprovedPrototypesForAdmin(request, response, next) {
     const date = getQueryValue(request.query, "date");
     const fromDate = getQueryValue(request.query, "fromDate");
     const toDate = getQueryValue(request.query, "toDate");
-    const facultyName = getQueryValue(
-      request.query,
-      "facultyName",
-    ).toLowerCase();
-    const includeRejected =
-      getQueryValue(request.query, "includeRejected").toLowerCase() === "true";
+    const facultyName = getQueryValue(request.query, "facultyName").toLowerCase();
+    const includeRejected = getQueryValue(request.query, "includeRejected").toLowerCase() === "true";
 
     const conditions = [
-      includeRejected
-        ? "id.status IN ('approved', 'rejected')"
-        : "id.status = 'approved'",
+      includeRejected ? "id.status IN ('approved', 'rejected')" : "id.status = 'approved'",
     ];
     const params = [];
 
     if (quarter) {
       params.push(quarter);
-      conditions.push(
-        `LOWER(COALESCE(id.program_details->>'quarter', '')) = LOWER($${params.length})`,
-      );
+      conditions.push(`LOWER(COALESCE(id.program_details->>'quarter', '')) = LOWER($${params.length})`);
     }
 
     if (date) {
@@ -321,16 +290,12 @@ export async function getApprovedPrototypesForAdmin(request, response, next) {
     } else {
       if (fromDate) {
         params.push(fromDate);
-        conditions.push(
-          `NULLIF(id.duration_details->>'toDate', '')::date >= $${params.length}::date`,
-        );
+        conditions.push(`NULLIF(id.duration_details->>'toDate', '')::date >= $${params.length}::date`);
       }
 
       if (toDate) {
         params.push(toDate);
-        conditions.push(
-          `NULLIF(id.duration_details->>'fromDate', '')::date <= $${params.length}::date`,
-        );
+        conditions.push(`NULLIF(id.duration_details->>'fromDate', '')::date <= $${params.length}::date`);
       }
     }
 
@@ -354,7 +319,7 @@ export async function getApprovedPrototypesForAdmin(request, response, next) {
       `${basePrototypeSelect}
        WHERE ${conditions.join(" AND ")}
        ORDER BY id.approved_at DESC NULLS LAST, id.created_at DESC`,
-      params,
+      params
     );
 
     response.status(200).json({
@@ -366,18 +331,11 @@ export async function getApprovedPrototypesForAdmin(request, response, next) {
   }
 }
 
-export async function getApprovedPrototypeFilterOptionsForAdmin(
-  _request,
-  response,
-  next,
-) {
+export async function getApprovedPrototypeFilterOptionsForAdmin(_request, response, next) {
   try {
     const includeRejected =
-      getQueryValue(response.req?.query, "includeRejected").toLowerCase() ===
-      "true";
-    const statusFilter = includeRejected
-      ? "IN ('approved', 'rejected')"
-      : "= 'approved'";
+      getQueryValue(response.req?.query, "includeRejected").toLowerCase() === "true";
+    const statusFilter = includeRejected ? "IN ('approved', 'rejected')" : "= 'approved'";
 
     const quarterRows = await db.unsafe(
       `
@@ -386,7 +344,7 @@ export async function getApprovedPrototypeFilterOptionsForAdmin(
       WHERE id.status ${statusFilter}
         AND TRIM(COALESCE(id.program_details->>'quarter', '')) <> ''
       ORDER BY quarter
-      `,
+      `
     );
 
     const facultyRows = await db.unsafe(
@@ -413,7 +371,7 @@ export async function getApprovedPrototypeFilterOptionsForAdmin(
       ) names
       WHERE name <> ''
       ORDER BY name
-      `,
+      `
     );
 
     response.status(200).json({
@@ -441,7 +399,7 @@ export async function getMyPrototypesForFaculty(request, response, next) {
       `${basePrototypeSelect}
        WHERE id.user_id = $1
        ORDER BY id.created_at DESC`,
-      [userId],
+      [userId]
     );
 
     response.status(200).json({
@@ -457,8 +415,8 @@ export async function getReviewQueueForAdmin(request, response, next) {
   try {
     const prototypes = await db.unsafe(
       `${basePrototypeSelect}
-       WHERE id.status IN ('pending', 'rejected', 'approved')
-       ORDER BY CASE id.status WHEN 'pending' THEN 0 WHEN 'rejected' THEN 1 ELSE 2 END, id.created_at DESC`,
+       WHERE id.status IN ('pending', 'rejected')
+       ORDER BY CASE id.status WHEN 'pending' THEN 0 ELSE 1 END, id.created_at DESC`
     );
 
     response.status(200).json({
@@ -512,7 +470,7 @@ export async function getPrototypeById(request, response, next) {
       WHERE id.id = $1
       LIMIT 1
       `,
-      [prototypeId],
+      [prototypeId]
     );
 
     const prototypeRow = prototypeRows[0];
@@ -523,10 +481,7 @@ export async function getPrototypeById(request, response, next) {
 
     const requestRole = String(request.user?.role ?? "").toLowerCase();
     const requestUserId = String(request.user?.id ?? "").trim();
-    if (
-      requestRole === "faculty" &&
-      requestUserId !== String(prototypeRow.user_id)
-    ) {
+    if (requestRole === "faculty" && requestUserId !== String(prototypeRow.user_id)) {
       response.status(403).json({ message: "Forbidden" });
       return;
     }
@@ -567,12 +522,8 @@ export async function getPrototypeById(request, response, next) {
 export async function reviewPrototypeByAdmin(request, response, next) {
   try {
     const prototypeId = Number(request.params?.prototypeId);
-    const action = String(request.body?.action ?? "")
-      .trim()
-      .toLowerCase();
-    const rejectionMessage = String(
-      request.body?.rejectionMessage ?? "",
-    ).trim();
+    const action = String(request.body?.action ?? "").trim().toLowerCase();
+    const rejectionMessage = String(request.body?.rejectionMessage ?? "").trim();
 
     if (!Number.isFinite(prototypeId) || prototypeId <= 0) {
       response.status(400).json({ message: "Invalid prototype id." });
@@ -580,9 +531,7 @@ export async function reviewPrototypeByAdmin(request, response, next) {
     }
 
     if (!["approve", "reject"].includes(action)) {
-      response
-        .status(400)
-        .json({ message: "Action must be approve or reject." });
+      response.status(400).json({ message: "Action must be approve or reject." });
       return;
     }
 
@@ -603,7 +552,7 @@ export async function reviewPrototypeByAdmin(request, response, next) {
       WHERE id.id = $1
       LIMIT 1
       `,
-      [prototypeId],
+      [prototypeId]
     );
 
     const prototypeRow = prototypeRows[0];
@@ -628,15 +577,11 @@ export async function reviewPrototypeByAdmin(request, response, next) {
       WHERE id = $4
       RETURNING id, status, rejection_message, reviewed_at, approved_at, rejected_at
       `,
-      [nextStatus, rejectionMessage || null, adminUserId, prototypeId],
+      [nextStatus, rejectionMessage || null, adminUserId, prototypeId]
     );
 
     const updatedPrototype = updatedRows[0];
-    const emailQueued = triggerReviewNotification({
-      prototypeRow,
-      nextStatus,
-      rejectionMessage,
-    });
+    const emailQueued = triggerReviewNotification({ prototypeRow, nextStatus, rejectionMessage });
 
     response.status(200).json({
       message: `Prototype ${nextStatus} successfully.`,
@@ -649,3 +594,4 @@ export async function reviewPrototypeByAdmin(request, response, next) {
     next(error);
   }
 }
+

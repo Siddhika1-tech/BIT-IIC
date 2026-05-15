@@ -40,34 +40,91 @@ const prettifyKey = (key) =>
     .trim()
     .replace(/^./, (char) => char.toUpperCase());
 
+const IDEA_FIELD_LABELS = {
+  instituteName: "Institute Name",
+  innovationTitle: "Title of the Innovation",
+  teamLeadName: "Team Lead Name",
+  teamLeadEmail: "Team Lead Email",
+  teamLeadGender: "Team Lead Gender",
+  fyOfDevelopment: "Financial Year of Development",
+  sectorDomain: "Sector / Domain",
+  developedAsPartOf: "Developed as Part of",
+  innovationType: "Innovation Type",
+  developmentStage: "Development Stage",
+  problemRelevance:
+    "Define the Problem and Its Relevance to Today's Market / Society / Industry Need",
+  solutionDescription: "Describe the Solution / Proposed / Developed",
+  uniquenessFeatures:
+    "Explain the Uniqueness and Distinctive Features of the Solution",
+  competitorDifference:
+    "How Your Solution Differs from Similar Competitor Products",
+  ipPatentAssociated:
+    "Is There Any IP or Patentable Component Associated with the Solution?",
+  ipPatentDocument: "IP / Patent Document",
+  innovationGrantSupport: "Innovation Grant / Seed Fund Support",
+  innovationGrantDocument: "Innovation Grant Document",
+  recognitionsObtained: "Recognitions Obtained",
+  latestAchievementDocument: "Latest Achievement Document",
+  commercializedSolution:
+    "Commercialized Through Technology Transfer or Startup",
+  startupRegistrationDocument: "Startup / Enterprise Registration Copy",
+  incubationSupportReceived: "Received Pre-Incubation / Incubation Support",
+  incubationUnitName: "Pre-Incubation / Incubation Unit Name",
+  innovationVideoUrl: "Video URL",
+  innovationPhotograph: "Innovation Photograph",
+};
+
+const isUploadPath = (value) =>
+  typeof value === "string" && value.startsWith("/uploads/");
+
+const renderValue = (key, value) => {
+  if (key === "fromDate" || key === "toDate") {
+    const dateValue = normalizeDate(value);
+    return dateValue || "-";
+  }
+
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  if (typeof value === "object") {
+    const objectValue = JSON.stringify(value);
+    return objectValue && objectValue !== "{}" ? objectValue : "-";
+  }
+
+  const textValue = String(value).trim();
+  if (!textValue) {
+    return "-";
+  }
+
+  if (isUploadPath(textValue) || /^https?:\/\//i.test(textValue)) {
+    return (
+      <a
+        href={textValue}
+        target="_blank"
+        rel="noreferrer"
+        className="text-primary hover:underline"
+      >
+        Open file
+      </a>
+    );
+  }
+
+  return textValue;
+};
+
 const renderDetails = (details = {}) => {
-  return Object.entries(details).map(([key, value]) => (
-    <div key={key} className="rounded-md border border-gray-200 p-3">
-      <p className="text-xs font-semibold uppercase text-gray-500">
-        {prettifyKey(key)}
-      </p>
-      <p className="mt-1 wrap-break-word text-sm text-gray-800">
-        {(() => {
-          if (key === "fromDate" || key === "toDate") {
-            const dateValue = normalizeDate(value);
-            return dateValue || "-";
-          }
-
-          if (value === null || value === undefined) {
-            return "-";
-          }
-
-          if (typeof value === "object") {
-            const objectValue = JSON.stringify(value);
-            return objectValue && objectValue !== "{}" ? objectValue : "-";
-          }
-
-          const textValue = String(value).trim();
-          return textValue || "-";
-        })()}
-      </p>
-    </div>
-  ));
+  return Object.entries(details)
+    .map(([key, value]) => (
+      <div key={key} className="rounded-md border border-gray-200 p-3">
+        <p className="text-xs font-semibold uppercase text-gray-500">
+          {IDEA_FIELD_LABELS[key] || prettifyKey(key)}
+        </p>
+        <p className="mt-1 wrap-break-word text-sm text-gray-800">
+          {renderValue(key, value)}
+        </p>
+      </div>
+    ));
 };
 
 const getEventDateLabel = (eventData) => {
@@ -86,9 +143,7 @@ const getEventDateLabel = (eventData) => {
 };
 
 const getDurationLabel = (eventData) => {
-  const durationFromForm = String(
-    eventData?.durationDetails?.durationHours ?? "",
-  ).trim();
+  const durationFromForm = String(eventData?.durationDetails?.durationHours ?? "").trim();
   if (durationFromForm) {
     return `${durationFromForm} hrs`;
   }
@@ -102,15 +157,11 @@ const getDurationLabel = (eventData) => {
   const fromDateTime = new Date(fromDateRaw);
   const toDateTime = new Date(toDateRaw);
 
-  if (
-    Number.isNaN(fromDateTime.getTime()) ||
-    Number.isNaN(toDateTime.getTime())
-  ) {
+  if (Number.isNaN(fromDateTime.getTime()) || Number.isNaN(toDateTime.getTime())) {
     return "-";
   }
 
-  const hours =
-    (toDateTime.getTime() - fromDateTime.getTime()) / (1000 * 60 * 60);
+  const hours = (toDateTime.getTime() - fromDateTime.getTime()) / (1000 * 60 * 60);
   if (!Number.isFinite(hours) || hours < 0) {
     return "-";
   }
@@ -123,12 +174,9 @@ const getDurationLabel = (eventData) => {
 };
 
 const detailSteps = [
-  { key: "programDetails", label: "Program" },
-  { key: "durationDetails", label: "Duration" },
+  { key: "ideaDetails", label: "Idea Details" },
   { key: "overview", label: "Overview" },
-  { key: "speakerDetails", label: "Speaker" },
-  { key: "bipPortal", label: "BIP Portal" },
-  { key: "faculty", label: "Faculty" },
+  { key: "attachments", label: "Attachments" },
 ];
 
 export default function IdeaOverview() {
@@ -138,28 +186,20 @@ export default function IdeaOverview() {
   const user = useMemo(() => getAuthUser(), []);
   const isAdmin = user?.roleName === "admin";
   const backTo =
-    typeof location.state?.from === "string" &&
-    location.state.from.startsWith("/")
+    typeof location.state?.from === "string" && location.state.from.startsWith("/")
       ? location.state.from
       : isAdmin
-        ? "/admin/idea-review"
-        : "/teacher/ideas";
+      ? "/admin/idea-review"
+      : "/teacher/ideas";
 
   const [eventData, setEventData] = useState(null);
   const [activeDetailStep, setActiveDetailStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [rejectMessage, setRejectMessage] = useState("");
   const [processingReview, setProcessingReview] = useState(false);
-  const [messageInitialized, setMessageInitialized] = useState(false);
-  const [alertState, setAlertState] = useState({
-    isOpen: false,
-    message: "",
-    severity: "info",
-  });
+  const [alertState, setAlertState] = useState({ isOpen: false, message: "", severity: "info" });
   const detailStepProgress =
-    detailSteps.length > 1
-      ? (activeDetailStep / (detailSteps.length - 1)) * 100
-      : 0;
+    detailSteps.length > 1 ? (activeDetailStep / (detailSteps.length - 1)) * 100 : 0;
 
   const loadEvent = async () => {
     if (!ideaId) {
@@ -170,10 +210,7 @@ export default function IdeaOverview() {
     try {
       const payload = await getIdeaById({ token, ideaId });
       setEventData(payload.data || null);
-      if (!messageInitialized) {
-        setRejectMessage(payload.data?.rejectionMessage || "");
-        setMessageInitialized(true);
-      }
+      setRejectMessage(payload.data?.rejectionMessage || "");
       setActiveDetailStep(0);
     } catch (error) {
       setAlertState({
@@ -228,8 +265,9 @@ export default function IdeaOverview() {
           rejectedAt: reviewData.rejected_at || previous.rejectedAt,
         };
       });
-      if (reviewData.rejection_message !== undefined) {
-        setRejectMessage(reviewData.rejection_message || "");
+
+      if (action === "approve") {
+        setRejectMessage("");
       }
     } catch (error) {
       setAlertState({
@@ -245,10 +283,7 @@ export default function IdeaOverview() {
   return (
     <section className="-m-6 min-h-full bg-white px-6 py-5">
       <div className="mb-4 flex items-center justify-between">
-        <Link
-          to={backTo}
-          className="text-sm font-medium text-primary hover:underline"
-        >
+        <Link to={backTo} className="text-sm font-medium text-primary hover:underline">
           Back
         </Link>
         {eventData?.status && (
@@ -267,52 +302,28 @@ export default function IdeaOverview() {
       {!loading && eventData && (
         <div className="space-y-6">
           <div className="rounded-md border border-gray-200 p-5">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {eventData.eventName || `Idea #${eventData.id}`}
-            </h2>
-            <p className="mt-3 text-sm text-gray-700">
-              {eventData.majorReason || "No major reason provided."}
-            </p>
+            <h2 className="text-lg font-semibold text-gray-900">{eventData.eventName || `Idea #${eventData.id}`}</h2>
+            <p className="mt-3 text-sm text-gray-700">{eventData.majorReason || "No major reason provided."}</p>
 
             <div className="mt-4 grid gap-3 text-xs text-gray-700 md:grid-cols-2 xl:grid-cols-4">
-              <p>
-                <span className="font-semibold">Quarter:</span>{" "}
-                {eventData.quarter || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Idea Date:</span>{" "}
-                {getEventDateLabel(eventData)}
-              </p>
-              <p>
-                <span className="font-semibold">Duration:</span>{" "}
-                {getDurationLabel(eventData)}
-              </p>
-              <p>
-                <span className="font-semibold">Owner:</span>{" "}
-                {eventData.ownerName || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Email:</span>{" "}
-                {eventData.ownerEmail || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Rejection Msg:</span>{" "}
-                {eventData.rejectionMessage || "-"}
-              </p>
+              <p><span className="font-semibold">Quarter:</span> {eventData.quarter || "-"}</p>
+              <p><span className="font-semibold">Idea Date:</span> {getEventDateLabel(eventData)}</p>
+              <p><span className="font-semibold">Duration:</span> {getDurationLabel(eventData)}</p>
+              <p><span className="font-semibold">Owner:</span> {eventData.ownerName || "-"}</p>
+              <p><span className="font-semibold">Email:</span> {eventData.ownerEmail || "-"}</p>
+              <p><span className="font-semibold">Rejection Msg:</span> {eventData.rejectionMessage || "-"}</p>
             </div>
           </div>
 
           {isAdmin && (
             <div className="rounded-md border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-900">
-                Review Action
-              </h3>
+              <h3 className="text-sm font-semibold text-gray-900">Review Action</h3>
               <textarea
                 value={rejectMessage}
                 onChange={(event) => setRejectMessage(event.target.value)}
                 rows={4}
                 className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                placeholder="Optional reviewer comment"
+                placeholder="Optional rejection message"
               />
               <div className="mt-4 flex items-center gap-2">
                 <button
@@ -336,18 +347,14 @@ export default function IdeaOverview() {
           )}
 
           <div className="rounded-md border border-gray-200 p-5">
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">
-              Detailed Information
-            </h3>
+            <h3 className="mb-3 text-sm font-semibold text-gray-900">Detailed Information</h3>
 
             <div className="mb-4 overflow-x-auto">
               <div className="relative min-w-190 px-2 pb-1">
                 <div className="absolute left-8 right-8 top-4 h-0.5 bg-gray-300" />
                 <div
                   className="absolute left-8 top-4 h-0.5 bg-primary transition-all duration-200"
-                  style={{
-                    width: `calc((100% - 4rem) * ${detailStepProgress / 100})`,
-                  }}
+                  style={{ width: `calc((100% - 4rem) * ${detailStepProgress / 100})` }}
                 />
                 <div className="relative flex items-start justify-between gap-2">
                   {detailSteps.map((step, index) => {
@@ -372,9 +379,7 @@ export default function IdeaOverview() {
                         </span>
                         <span
                           className={`mt-2 text-xs ${
-                            isActiveStep
-                              ? "font-semibold text-primary"
-                              : "text-gray-600"
+                            isActiveStep ? "font-semibold text-primary" : "text-gray-600"
                           }`}
                         >
                           {step.label}
@@ -387,17 +392,13 @@ export default function IdeaOverview() {
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              {renderDetails(
-                eventData[detailSteps[activeDetailStep]?.key] || {},
-              )}
+              {renderDetails(eventData[detailSteps[activeDetailStep]?.key] || {})}
             </div>
 
             <div className="mt-4 flex items-center justify-between">
               <button
                 type="button"
-                onClick={() =>
-                  setActiveDetailStep((previous) => Math.max(0, previous - 1))
-                }
+                onClick={() => setActiveDetailStep((previous) => Math.max(0, previous - 1))}
                 disabled={activeDetailStep === 0}
                 className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50"
               >
@@ -408,11 +409,7 @@ export default function IdeaOverview() {
               </span>
               <button
                 type="button"
-                onClick={() =>
-                  setActiveDetailStep((previous) =>
-                    Math.min(detailSteps.length - 1, previous + 1),
-                  )
-                }
+                onClick={() => setActiveDetailStep((previous) => Math.min(detailSteps.length - 1, previous + 1))}
                 disabled={activeDetailStep === detailSteps.length - 1}
                 className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
               >
@@ -425,12 +422,12 @@ export default function IdeaOverview() {
 
       <Alert
         isOpen={alertState.isOpen}
-        onClose={() =>
-          setAlertState((previous) => ({ ...previous, isOpen: false }))
-        }
+        onClose={() => setAlertState((previous) => ({ ...previous, isOpen: false }))}
         severity={alertState.severity}
         message={alertState.message}
       />
     </section>
   );
 }
+
+

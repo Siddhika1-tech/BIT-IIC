@@ -9,14 +9,316 @@ import {
   X,
   Download,
 } from "lucide-react";
+import { jsPDF } from "jspdf";
 import {
-  getAdminReviewQueue,
+  getAdminApprovedEvents,
   getAdminApprovedFilterOptions,
+  getEventById,
   reviewEventByAdmin,
 } from "../../../config/api";
 import Alert from "../../components/Alert";
 import SearchableSelect from "../../components/SearchableSelect";
-import { getAuthToken, getAuthUser } from "../../utils/auth";
+import { getAuthToken } from "../../utils/auth";
+
+const detailSteps = [
+  {
+    key: "programDetails",
+    label: "Program",
+    fields: [
+      ["previousAcademicYear", "Previous Academic Year"],
+      ["currentAcademicYear", "Current Academic Year"],
+      ["quarter", "Quarter"],
+      ["programDrivenBy", "Program Driven By"],
+      ["programActivityName", "Program Activity Name"],
+      ["programType", "Program Type"],
+      ["activityLedBy", "Activity Led By"],
+      ["programTheme", "Program Theme"],
+      ["aboutEvent", "About Event"],
+      ["studentParticipants", "Student Participants"],
+      ["facultyParticipants", "Faculty Participants"],
+      ["externalParticipants", "External Participants"],
+      ["expenditureAmount", "Expenditure Amount"],
+      ["modeOfSession", "Mode Of Session"],
+      ["eventType", "Event Type"],
+    ],
+  },
+  {
+    key: "durationDetails",
+    label: "Duration",
+    fields: [
+      ["durationManual", "Duration Entered Manually"],
+      ["fromDate", "From Date & Time"],
+      ["toDate", "To Date & Time"],
+      ["durationHours", "Duration (Hours)"],
+    ],
+  },
+  {
+    key: "overview",
+    label: "Overview",
+    fields: [
+      ["objective", "Objective"],
+      ["benefitLearning", "Benefit Learning"],
+      ["outcomeObtained", "Outcome Obtained"],
+      ["remark", "Remark"],
+    ],
+  },
+  {
+    key: "speakerDetails",
+    label: "Speaker",
+    fields: [
+      ["speakerName", "Speaker Name"],
+      ["speakerDesignation", "Speaker Designation"],
+      ["speakerOrganization", "Speaker Organization"],
+      ["aboutSpeaker", "About Speaker"],
+      ["sessionVideoUrl", "Session Video URL"],
+      ["publishedSocialMediaUrl", "Published Social Media URL"],
+    ],
+  },
+  {
+    key: "bipPortal",
+    label: "BIP Portal",
+    fields: [
+      ["facultyApplied", "Faculty Applied"],
+      ["taskId", "Task ID"],
+      ["departmentsInvolved", "Departments Involved"],
+      ["department", "Department"],
+      ["specialLabsInvolved", "Special Labs Involved"],
+      ["specialLabs", "Special Labs"],
+      ["clubInvolved", "Club Involved"],
+      ["club", "Club"],
+      ["firstFacultyInvolved", "First Faculty Involved"],
+      ["secondFacultyInvolved", "Second Faculty Involved"],
+      ["thirdFacultyInvolved", "Third Faculty Involved"],
+      ["iqacVerification", "IQAC Verification"],
+    ],
+  },
+  {
+    key: "faculty",
+    label: "Faculty",
+    fields: [
+      ["faculty1", "Faculty 1"],
+      ["faculty2", "Faculty 2"],
+      ["faculty3", "Faculty 3"],
+    ],
+  },
+];
+
+const toTitleCase = (value) => {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase());
+};
+
+const getDisplayValue = (key, rawValue) => {
+  if (key === "fromDate" || key === "toDate") {
+    const normalized = normalizeDate(rawValue);
+    if (!normalized) {
+      return "-";
+    }
+
+    const parsed = new Date(rawValue);
+    if (Number.isNaN(parsed.getTime())) {
+      return normalized;
+    }
+
+    const hours = String(parsed.getHours()).padStart(2, "0");
+    const minutes = String(parsed.getMinutes()).padStart(2, "0");
+    return `${normalized} ${hours}:${minutes}`;
+  }
+
+  if (typeof rawValue === "boolean") {
+    return rawValue ? "Yes" : "No";
+  }
+
+  if (rawValue === null || rawValue === undefined) {
+    return "-";
+  }
+
+  if (typeof rawValue === "object") {
+    const serialized = JSON.stringify(rawValue);
+    return serialized && serialized !== "{}" ? serialized : "-";
+  }
+
+  const text = String(rawValue).trim();
+  return text || "-";
+};
+
+const sanitizeFileName = (value) => {
+  const rawName = String(value || "Event").trim();
+  if (!rawName) {
+    return "Event";
+  }
+
+  return rawName.replace(/[\\/:*?"<>|]+/g, "_");
+};
+
+const getSectionEntries = (sectionData, configuredFields) => {
+  const data = sectionData && typeof sectionData === "object" ? sectionData : {};
+  const usedKeys = new Set();
+  const orderedEntries = configuredFields.map(([key, label]) => {
+    usedKeys.add(key);
+    return {
+      label,
+      value: getDisplayValue(key, data[key]),
+    };
+  });
+
+  const additionalEntries = Object.keys(data)
+    .filter((key) => !usedKeys.has(key))
+    .sort((left, right) => left.localeCompare(right))
+    .map((key) => ({
+      label: toTitleCase(key),
+      value: getDisplayValue(key, data[key]),
+    }));
+
+  return [...orderedEntries, ...additionalEntries];
+};
+
+const drawPdfHeader = ({ doc, title, generatedOn }) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(107, 33, 168);
+  doc.rect(0, 0, pageWidth, 34, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  const titleLines = doc.splitTextToSize(
+    `${title || "Event"} - Detailed Report`,
+    pageWidth - 28,
+  );
+  doc.text(titleLines, 14, 12);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Generated on: ${generatedOn}`, 14, 26);
+};
+
+const drawSectionTitle = ({ doc, sectionTitle, y }) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  doc.setFillColor(237, 233, 254);
+  doc.roundedRect(14, y, pageWidth - 28, 10, 2, 2, "F");
+  doc.setTextColor(107, 33, 168);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(sectionTitle, 18, y + 7);
+};
+
+const drawSectionGrid = ({ doc, title, generatedOn, sectionTitle, entries, cursor }) => {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  const rowGap = 4;
+  const columnGap = 6;
+  const colWidth = (pageWidth - marginX * 2 - columnGap) / 2;
+  const innerPadding = 3;
+  const maxY = pageHeight - 14;
+
+  const addPageAndResetCursor = () => {
+    doc.addPage();
+    drawPdfHeader({ doc, title, generatedOn });
+    cursor.y = 40;
+  };
+
+  if (cursor.y + 14 > maxY) {
+    addPageAndResetCursor();
+  }
+
+  drawSectionTitle({ doc, sectionTitle, y: cursor.y });
+  cursor.y += 14;
+
+  const renderCell = (entry, x, topY) => {
+    if (!entry) {
+      return 0;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    const labelLines = doc.splitTextToSize(entry.label, colWidth - innerPadding * 2);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const valueLines = doc.splitTextToSize(
+      String(entry.value || "-"),
+      colWidth - innerPadding * 2,
+    );
+
+    const lineHeight = 4;
+    const cellHeight =
+      innerPadding * 2 +
+      labelLines.length * lineHeight +
+      1 +
+      valueLines.length * lineHeight;
+
+    doc.setDrawColor(221, 214, 254);
+    doc.setFillColor(250, 250, 255);
+    doc.roundedRect(x, topY, colWidth, cellHeight, 1.5, 1.5, "FD");
+
+    let textY = topY + innerPadding + 3;
+    doc.setTextColor(91, 33, 182);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(labelLines, x + innerPadding, textY);
+
+    textY += labelLines.length * lineHeight + 1;
+    doc.setTextColor(31, 41, 55);
+    doc.setFont("helvetica", "normal");
+    doc.text(valueLines, x + innerPadding, textY);
+
+    return cellHeight;
+  };
+
+  for (let index = 0; index < entries.length; index += 2) {
+    const leftEntry = entries[index];
+    const rightEntry = entries[index + 1];
+
+    const leftPreviewHeight = leftEntry
+      ? 8 +
+        doc.splitTextToSize(leftEntry.label, colWidth - innerPadding * 2).length * 4 +
+        doc.splitTextToSize(String(leftEntry.value || "-"), colWidth - innerPadding * 2)
+          .length *
+          4
+      : 0;
+    const rightPreviewHeight = rightEntry
+      ? 8 +
+        doc.splitTextToSize(rightEntry.label, colWidth - innerPadding * 2).length * 4 +
+        doc.splitTextToSize(String(rightEntry.value || "-"), colWidth - innerPadding * 2)
+          .length *
+          4
+      : 0;
+
+    const estimatedRowHeight = Math.max(leftPreviewHeight, rightPreviewHeight, 14);
+    if (cursor.y + estimatedRowHeight > maxY) {
+      addPageAndResetCursor();
+
+      if (cursor.y + 14 > maxY) {
+        addPageAndResetCursor();
+      }
+
+      drawSectionTitle({ doc, sectionTitle, y: cursor.y });
+      cursor.y += 14;
+    }
+
+    const leftHeight = renderCell(leftEntry, marginX, cursor.y);
+    const rightHeight = renderCell(
+      rightEntry,
+      marginX + colWidth + columnGap,
+      cursor.y,
+    );
+    cursor.y += Math.max(leftHeight, rightHeight, 14) + rowGap;
+  }
+
+  cursor.y += 2;
+};
 
 const normalizeDate = (rawValue) => {
   const value = String(rawValue || "").trim();
@@ -40,55 +342,8 @@ const normalizeDate = (rawValue) => {
   return `${year}-${month}-${day}`;
 };
 
-const getEventDateLabel = (eventItem) => {
-  const fromDate = normalizeDate(eventItem.fromDate);
-  const toDate = normalizeDate(eventItem.toDate);
-
-  if (fromDate && toDate) {
-    return `${fromDate} to ${toDate}`;
-  }
-
-  if (fromDate) {
-    return fromDate;
-  }
-
-  return "-";
-};
-
-const getDurationLabel = (eventItem) => {
-  const fromDateRaw = String(eventItem.fromDate || "").trim();
-  const toDateRaw = String(eventItem.toDate || "").trim();
-
-  if (!fromDateRaw || !toDateRaw) {
-    return "-";
-  }
-
-  const fromDateTime = new Date(fromDateRaw);
-  const toDateTime = new Date(toDateRaw);
-  if (
-    Number.isNaN(fromDateTime.getTime()) ||
-    Number.isNaN(toDateTime.getTime())
-  ) {
-    return "-";
-  }
-
-  const hours =
-    (toDateTime.getTime() - fromDateTime.getTime()) / (1000 * 60 * 60);
-  if (!Number.isFinite(hours) || hours < 0) {
-    return "-";
-  }
-
-  if (hours === 0) {
-    return "0 hr";
-  }
-
-  return `${hours.toFixed(1)} hrs`;
-};
-
 export default function AdminApprovedDashboard() {
   const token = useMemo(() => getAuthToken(), []);
-  const user = useMemo(() => getAuthUser(), []);
-  const isAdmin = user?.roleName === "admin";
   const location = useLocation();
 
   const [quarter, setQuarter] = useState("");
@@ -97,13 +352,10 @@ export default function AdminApprovedDashboard() {
   const [options, setOptions] = useState({ quarters: [], faculties: [] });
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState([]);
-  const [rejectionMessages, setRejectionMessages] = useState({});
+  const [reviewingEventId, setReviewingEventId] = useState(null);
+  const [rejectionMessage, setRejectionMessage] = useState("");
   const [processingReview, setProcessingReview] = useState(false);
-  const [actionModalData, setActionModalData] = useState({
-    eventId: null,
-    action: null, // "approve" or "reject"
-    message: "",
-  });
+  const [downloadingEventId, setDownloadingEventId] = useState(null);
   const [alertState, setAlertState] = useState({
     isOpen: false,
     message: "",
@@ -112,25 +364,16 @@ export default function AdminApprovedDashboard() {
 
   useEffect(() => {
     const loadInitialData = async () => {
-      if (!token) {
-        setAlertState({
-          isOpen: true,
-          message: "Authentication required. Please log in.",
-          severity: "error",
-        });
-        return;
-      }
-
       setLoading(true);
       try {
         const [eventsPayload, optionsPayload] = await Promise.all([
-          getAdminReviewQueue(token),
+          getAdminApprovedEvents({ token }),
           getAdminApprovedFilterOptions(token),
         ]);
 
         setEvents(eventsPayload.data || []);
         setOptions({
-          quarters: [],
+          quarters: optionsPayload.data?.quarters || [],
           faculties: optionsPayload.data?.faculties || [],
         });
       } catch (error) {
@@ -149,54 +392,37 @@ export default function AdminApprovedDashboard() {
 
   const activityOptions = useMemo(() => {
     return Array.from(
-      new Set(events.map((item) => item.programDrivenBy).filter(Boolean)),
-    ).sort();
-  }, [events]);
-
-  const quarterOptions = useMemo(() => {
-    return Array.from(
-      new Set(events.map((item) => item.quarter).filter(Boolean)),
+      new Set(events.map((item) => item.programActivityName).filter(Boolean)),
     ).sort();
   }, [events]);
 
   const filteredEvents = useMemo(() => {
-    return events
-      .filter((eventItem) => {
-        // Faculty can only see their own events
-        if (!isAdmin && eventItem.ownerId !== user?.id) {
+    return events.filter((eventItem) => {
+      if (quarter && String(eventItem.quarter || "") !== quarter) {
+        return false;
+      }
+
+      if (activityName && eventItem.programActivityName !== activityName) {
+        return false;
+      }
+
+      if (searchTitle) {
+        const searchLower = searchTitle.toLowerCase();
+        const eventName = String(eventItem.eventName || "").toLowerCase();
+        const programName = String(
+          eventItem.programActivityName || "",
+        ).toLowerCase();
+        if (
+          !eventName.includes(searchLower) &&
+          !programName.includes(searchLower)
+        ) {
           return false;
         }
+      }
 
-        if (quarter && String(eventItem.quarter || "") !== quarter) {
-          return false;
-        }
-
-        if (activityName && eventItem.programDrivenBy !== activityName) {
-          return false;
-        }
-
-        if (searchTitle) {
-          const searchLower = searchTitle.toLowerCase();
-          const eventName = String(eventItem.eventName || "").toLowerCase();
-          const programName = String(
-            eventItem.programActivityName || "",
-          ).toLowerCase();
-          if (
-            !eventName.includes(searchLower) &&
-            !programName.includes(searchLower)
-          ) {
-            return false;
-          }
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        // Sort by status: pending first, then approved, then rejected
-        const statusOrder = { pending: 0, approved: 1, rejected: 2 };
-        return (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
-      });
-  }, [events, quarter, activityName, searchTitle, isAdmin, user?.id]);
+      return true;
+    });
+  }, [events, quarter, activityName, searchTitle]);
 
   const handleResetFilters = () => {
     setQuarter("");
@@ -204,17 +430,8 @@ export default function AdminApprovedDashboard() {
     setSearchTitle("");
   };
 
-  const handleActionClick = (eventId, action) => {
-    setActionModalData({
-      eventId,
-      action,
-      message: "",
-    });
-  };
-
-  const handleConfirmAction = async () => {
-    const { eventId, action, message } = actionModalData;
-    if (!eventId || !action) return;
+  const handleReview = async (eventId, action) => {
+    if (!eventId) return;
 
     setProcessingReview(true);
     try {
@@ -222,8 +439,7 @@ export default function AdminApprovedDashboard() {
         token,
         eventId,
         action,
-        rejectionMessage: action === "reject" ? message : "",
-        approverComment: action === "approve" ? message : "",
+        rejectionMessage: action === "reject" ? rejectionMessage : "",
       });
 
       setAlertState({
@@ -239,21 +455,16 @@ export default function AdminApprovedDashboard() {
                 ...event,
                 status: action === "approve" ? "approved" : "rejected",
                 rejectionMessage:
-                  action === "reject" ? message : event.rejectionMessage,
-                approverComment:
-                  action === "approve" ? message : event.approverComment,
+                  action === "reject"
+                    ? rejectionMessage
+                    : event.rejectionMessage,
               }
             : event,
         ),
       );
 
-      setRejectionMessages((prev) => {
-        const updated = { ...prev };
-        delete updated[eventId];
-        return updated;
-      });
-
-      setActionModalData({ eventId: null, action: null, message: "" });
+      setReviewingEventId(null);
+      setRejectionMessage("");
     } catch (error) {
       setAlertState({
         isOpen: true,
@@ -265,98 +476,56 @@ export default function AdminApprovedDashboard() {
     }
   };
 
-  const handleRejectClick = (eventId) => {
-    setActionModalData({
-      eventId,
-      action: "reject",
-      message: "",
-    });
-  };
+  const handleDownloadReport = async (eventItem) => {
+    if (!eventItem?.id || downloadingEventId) {
+      return;
+    }
 
-  const handleConfirmReject = async (eventId) => {
-    handleConfirmAction();
-  };
+    setDownloadingEventId(eventItem.id);
 
-  const handleReview = (eventId, action) => {
-    handleActionClick(eventId, action);
-  };
-
-  const handleDownloadReport = (eventItem) => {
     try {
-      // Create PDF content as HTML
-      const pdfContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #5b21b6; margin-bottom: 20px; }
-            .section { margin-bottom: 20px; }
-            .label { font-weight: bold; color: #374151; }
-            .value { color: #4b5563; margin-top: 5px; }
-            hr { border: 1px solid #e5e7eb; margin: 20px 0; }
-          </style>
-        </head>
-        <body>
-          <h1>Event Report</h1>
-          <div class="section">
-            <div class="label">Event Name:</div>
-            <div class="value">${eventItem.eventName || "N/A"}</div>
-          </div>
-          <div class="section">
-            <div class="label">Activity Type:</div>
-            <div class="value">${eventItem.programActivityName || "N/A"}</div>
-          </div>
-          <div class="section">
-            <div class="label">Quarter:</div>
-            <div class="value">${eventItem.quarter || "N/A"}</div>
-          </div>
-          <div class="section">
-            <div class="label">From Date:</div>
-            <div class="value">${normalizeDate(eventItem.fromDate) || "N/A"}</div>
-          </div>
-          <div class="section">
-            <div class="label">To Date:</div>
-            <div class="value">${normalizeDate(eventItem.toDate) || "N/A"}</div>
-          </div>
-          <div class="section">
-            <div class="label">Status:</div>
-            <div class="value">${eventItem.status === "approved" ? "Approved" : eventItem.status === "rejected" ? "Rejected" : "Under Review"}</div>
-          </div>
-          <hr />
-          <div class="section">
-            <div class="label">Reviewer's Comment:</div>
-            <div class="value">${eventItem.rejectionMessage || "No comments"}</div>
-          </div>
-          <div class="section" style="margin-top: 30px; font-size: 12px; color: #9ca3af;">
-            <p>Generated on: ${new Date().toLocaleString()}</p>
-          </div>
-        </body>
-        </html>
-      `;
+      const payload = await getEventById({ token, eventId: eventItem.id });
+      const eventData = payload?.data || {};
 
-      // Create blob and download
-      const blob = new Blob([pdfContent], { type: "text/html" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${eventItem.eventName || "Event"}_Report.html`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const reportTitle =
+        String(eventData.eventName || eventItem.eventName || "Event").trim() ||
+        `Event #${eventItem.id}`;
+      const generatedOn = new Date().toLocaleString();
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+      drawPdfHeader({ doc, title: reportTitle, generatedOn });
+      const cursor = { y: 40 };
+
+      detailSteps.forEach((step, index) => {
+        const sectionEntries = getSectionEntries(eventData[step.key], step.fields);
+        drawSectionGrid({
+          doc,
+          title: reportTitle,
+          generatedOn,
+          sectionTitle: `SECTION ${index + 1}: ${step.label.toUpperCase()}`,
+          entries: sectionEntries,
+          cursor,
+        });
+      });
+
+      doc.save(`${sanitizeFileName(reportTitle)}_Detailed_Report.pdf`);
 
       setAlertState({
         isOpen: true,
-        message: "Report downloaded successfully.",
+        message: "Detailed report downloaded successfully.",
         severity: "success",
       });
     } catch (error) {
       setAlertState({
         isOpen: true,
-        message: "Failed to download report.",
+        message: error.message || "Failed to download report.",
         severity: "error",
       });
+    } finally {
+      setDownloadingEventId(null);
     }
   };
 
@@ -389,7 +558,7 @@ export default function AdminApprovedDashboard() {
             label=""
             value={quarter}
             onChange={setQuarter}
-            options={quarterOptions}
+            options={options.quarters}
             emptyLabel="All Quarters"
           />
 
@@ -430,32 +599,12 @@ export default function AdminApprovedDashboard() {
       </div>
 
       <div className="px-8 py-8">
-        {alertState.isOpen && alertState.severity === "error" && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">
-              <span className="font-semibold">Error:</span> {alertState.message}
-            </p>
-          </div>
-        )}
-
         <div className="mb-6 flex items-center justify-between">
           <span className="badge-primary text-base">
-            {loading ? "Loading..." : filteredEvents.length} event
-            {!loading && filteredEvents.length !== 1 ? "s" : ""}
+            {filteredEvents.length} event
+            {filteredEvents.length !== 1 ? "s" : ""}
           </span>
-          {!loading && (
-            <span className="text-xs text-gray-600">
-              Total: {events.length} | Quarters: {quarterOptions.length} |
-              Activities: {activityOptions.length}
-            </span>
-          )}
         </div>
-
-        {loading && (
-          <div className="text-center py-8">
-            <p className="text-gray-600">Loading events...</p>
-          </div>
-        )}
 
         {!loading && filteredEvents.length === 0 && (
           <div className="empty-state">
@@ -516,11 +665,9 @@ export default function AdminApprovedDashboard() {
                   <th className="px-4 py-3.5 text-center text-sm font-bold text-purple-700">
                     Download Report
                   </th>
-                  {isAdmin && (
-                    <th className="px-4 py-3.5 text-center text-sm font-bold text-purple-700">
-                      Action
-                    </th>
-                  )}
+                  <th className="px-4 py-3.5 text-center text-sm font-bold text-purple-700">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -538,9 +685,7 @@ export default function AdminApprovedDashboard() {
                       </td>
                       <td className="px-4 py-3.5 text-xs">
                         <p className="font-semibold text-gray-900">
-                          {(
-                            eventItem.eventName || `Event #${eventItem.id}`
-                          ).toUpperCase()}
+                          {eventItem.eventName || `Event #${eventItem.id}`}
                         </p>
                       </td>
                       <td className="px-4 py-3.5 text-center text-xs font-medium text-gray-700">
@@ -585,26 +730,30 @@ export default function AdminApprovedDashboard() {
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-center text-xs text-gray-700">
-                        <span className="text-xs text-gray-600 font-semibold">
-                          {eventItem.status === "approved"
-                            ? eventItem.approverComment || "-"
-                            : eventItem.status === "rejected"
-                              ? eventItem.rejectionMessage || "-"
-                              : "-"}
-                        </span>
+                        {eventItem.rejectionMessage || "NA"}
                       </td>
                       <td className="px-4 py-3.5 text-center text-xs text-gray-700">
                         <button
                           type="button"
                           onClick={() => handleDownloadReport(eventItem)}
+                          disabled={Boolean(downloadingEventId)}
                           className="inline-flex items-center justify-center w-9 h-9 rounded-full text-purple-600 transition-colors hover:bg-purple-100"
-                          title="Download report"
+                          title={
+                            downloadingEventId === eventItem.id
+                              ? "Preparing detailed report..."
+                              : "Download report"
+                          }
                         >
                           <Download size={18} />
                         </button>
                       </td>
-                      {isAdmin && (
-                        <td className="px-4 py-3.5 text-center">
+                      <td className="px-4 py-3.5 text-center">
+                        {eventItem.status === "approved" ||
+                        eventItem.status === "rejected" ? (
+                          <span className="text-xs text-gray-600 font-semibold">
+                            NA
+                          </span>
+                        ) : (
                           <div className="flex items-center justify-center gap-2">
                             <button
                               type="button"
@@ -652,9 +801,7 @@ export default function AdminApprovedDashboard() {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                handleReview(eventItem.id, "reject")
-                              }
+                              onClick={() => setReviewingEventId(eventItem.id)}
                               disabled={processingReview}
                               className="inline-flex items-center gap-1.5 font-semibold text-xs transition-all duration-200"
                               style={{
@@ -695,8 +842,8 @@ export default function AdminApprovedDashboard() {
                               Reject
                             </button>
                           </div>
-                        </td>
-                      )}
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -706,67 +853,39 @@ export default function AdminApprovedDashboard() {
         )}
       </div>
 
-      {actionModalData.eventId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="pointer-events-auto w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              {actionModalData.action === "approve"
-                ? "Add Reviewer's Comment"
-                : "Confirm Rejection"}
-            </h2>
+      {reviewingEventId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold mb-4">Review Action</h2>
             <p className="text-sm text-gray-600 mb-4">
-              {actionModalData.action === "approve"
-                ? "Enter your reviewer's comment for this event."
-                : "Please enter your rejection reason for this event."}
+              Please provide a rejection message (optional):
             </p>
             <textarea
-              value={actionModalData.message}
-              onChange={(e) =>
-                setActionModalData((prev) => ({
-                  ...prev,
-                  message: e.target.value,
-                }))
-              }
+              value={rejectionMessage}
+              onChange={(e) => setRejectionMessage(e.target.value)}
               rows={4}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:border-purple-600 focus:outline-none mb-4"
-              placeholder={
-                actionModalData.action === "approve"
-                  ? "Enter your reviewer's comment..."
-                  : "Enter your rejection reason..."
-              }
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none mb-4"
+              placeholder="Optional rejection reason..."
             />
-            <div className="flex items-center gap-3 justify-end">
+            <div className="flex gap-3 justify-end">
               <button
                 type="button"
-                onClick={() =>
-                  setActionModalData({
-                    eventId: null,
-                    action: null,
-                    message: "",
-                  })
-                }
+                onClick={() => {
+                  setReviewingEventId(null);
+                  setRejectionMessage("");
+                }}
                 disabled={processingReview}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-70"
+                className="px-4 py-2 text-sm font-semibold text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-70"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleConfirmAction}
+                onClick={() => handleReview(reviewingEventId, "reject")}
                 disabled={processingReview}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-70 ${
-                  actionModalData.action === "approve"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-red-600 hover:bg-red-700"
-                }`}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded disabled:opacity-70"
               >
-                {processingReview
-                  ? actionModalData.action === "approve"
-                    ? "Approving..."
-                    : "Rejecting..."
-                  : actionModalData.action === "approve"
-                    ? "Confirm Approval"
-                    : "Confirm Rejection"}
+                {processingReview ? "Processing..." : "Confirm Rejection"}
               </button>
             </div>
           </div>

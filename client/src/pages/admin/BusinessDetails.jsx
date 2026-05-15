@@ -1,120 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
-import { getBusinessById, reviewBusinessByAdmin } from "../../../config/api";
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { getBusinessById } from "../../../config/api";
+import { getAuthToken } from "../../utils/auth";
 import Alert from "../../components/Alert";
-import { getAuthToken, getAuthUser } from "../../utils/auth";
-
-const statusBadgeClass = {
-  pending: "bg-yellow-100 text-yellow-700",
-  approved: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-};
-
-const prettifyKey = (key) =>
-  String(key || "")
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^./, (char) => char.toUpperCase());
-
-const renderDetails = (details = {}) =>
-  Object.entries(details).map(([key, value]) => (
-    <div key={key} className="rounded-md border border-gray-200 p-3">
-      <p className="text-xs font-semibold uppercase text-gray-500">
-        {prettifyKey(key)}
-      </p>
-      <div className="mt-1 break-words text-sm text-gray-800">
-        {(() => {
-          if (value === null || value === undefined) {
-            return "-";
-          }
-
-          const textValue = String(value).trim();
-          if (!textValue) {
-            return "-";
-          }
-
-          if (
-            textValue.startsWith("http://") ||
-            textValue.startsWith("https://") ||
-            textValue.startsWith("/uploads/")
-          ) {
-            return (
-              <a
-                href={textValue}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                {textValue}
-              </a>
-            );
-          }
-
-          return textValue;
-        })()}
-      </div>
-    </div>
-  ));
-
-const detailSteps = [
-  { key: "businessDetails", label: "Business" },
-  { key: "overview", label: "Overview" },
-  { key: "analysis", label: "Analysis" },
-  { key: "attachments", label: "Attachments" },
-];
 
 export default function BusinessDetails() {
   const { businessId } = useParams();
-  const location = useLocation();
+  const navigate = useNavigate();
   const token = useMemo(() => getAuthToken(), []);
-  const user = useMemo(() => getAuthUser(), []);
-  const isAdmin = user?.roleName === "admin";
-  const backTo =
-    typeof location.state?.from === "string" &&
-    location.state.from.startsWith("/")
-      ? location.state.from
-      : isAdmin
-        ? "/admin/business-review"
-        : "/teacher/businesses";
-
-  const [businessData, setBusinessData] = useState(null);
-  const [activeDetailStep, setActiveDetailStep] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [rejectMessage, setRejectMessage] = useState("");
-  const [processingReview, setProcessingReview] = useState(false);
-  const [messageInitialized, setMessageInitialized] = useState(false);
+  const [business, setBusiness] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [alertState, setAlertState] = useState({
     isOpen: false,
     message: "",
     severity: "info",
   });
 
-  const detailStepProgress =
-    detailSteps.length > 1
-      ? (activeDetailStep / (detailSteps.length - 1)) * 100
-      : 0;
-
   useEffect(() => {
     const loadBusiness = async () => {
-      if (!businessId) {
-        return;
-      }
-
-      setLoading(true);
       try {
-        const payload = await getBusinessById({ token, businessId });
-        setBusinessData(payload.data || null);
-        if (!messageInitialized) {
-          setRejectMessage(payload.data?.rejectionMessage || "");
-          setMessageInitialized(true);
+        if (!businessId) {
+          throw new Error("Business ID is required");
         }
-        setActiveDetailStep(0);
+        const payload = await getBusinessById({ businessId, token });
+        setBusiness(payload.data || {});
       } catch (error) {
         setAlertState({
           isOpen: true,
-          message: error.message || "Failed to fetch business details.",
+          message: error.message || "Failed to load business details.",
           severity: "error",
         });
       } finally {
@@ -125,250 +38,48 @@ export default function BusinessDetails() {
     loadBusiness();
   }, [businessId, token]);
 
-  const handleReview = async (action) => {
-    if (!isAdmin || !businessId) {
-      return;
-    }
+  if (loading) {
+    return <div className="p-6 text-center">Loading...</div>;
+  }
 
-    setProcessingReview(true);
-    try {
-      const payload = await reviewBusinessByAdmin({
-        token,
-        businessId,
-        action,
-        rejectionMessage: rejectMessage,
-      });
-
-      setAlertState({
-        isOpen: true,
-        message: payload.message || "Business updated.",
-        severity: "success",
-      });
-
-      const reviewData = payload?.data || {};
-      setBusinessData((previous) => {
-        if (!previous) {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          status: reviewData.status || previous.status,
-          rejectionMessage:
-            reviewData.rejection_message !== undefined
-              ? reviewData.rejection_message
-              : previous.rejectionMessage,
-          reviewedAt: reviewData.reviewed_at || previous.reviewedAt,
-          approvedAt: reviewData.approved_at || previous.approvedAt,
-          rejectedAt: reviewData.rejected_at || previous.rejectedAt,
-        };
-      });
-      if (reviewData.rejection_message !== undefined) {
-        setRejectMessage(reviewData.rejection_message || "");
-      }
-    } catch (error) {
-      setAlertState({
-        isOpen: true,
-        message: error.message || "Failed to update review.",
-        severity: "error",
-      });
-    } finally {
-      setProcessingReview(false);
-    }
-  };
+  if (!business || Object.keys(business).length === 0) {
+    return (
+      <div className="p-6 text-center text-gray-500">No data available.</div>
+    );
+  }
 
   return (
-    <section className="-m-6 min-h-full bg-white px-6 py-5">
-      <div className="mb-4 flex items-center justify-between">
-        <Link
-          to={backTo}
-          className="text-sm font-medium text-primary hover:underline"
-        >
-          Back
-        </Link>
-        {businessData?.status && (
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-              statusBadgeClass[businessData.status] ||
-              "bg-gray-100 text-gray-700"
-            }`}
-          >
-            {businessData.status}
-          </span>
-        )}
-      </div>
-
-      {loading && <div className="text-sm text-gray-500">Loading...</div>}
-
-      {!loading && businessData && (
-        <div className="space-y-6">
-          <div className="rounded-md border border-gray-200 p-5">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {businessData.eventName || `Business #${businessData.id}`}
-            </h2>
-            <p className="mt-3 text-sm text-gray-700">
-              {businessData.majorReason || "No major reason provided."}
-            </p>
-
-            <div className="mt-4 grid gap-3 text-xs text-gray-700 md:grid-cols-2 xl:grid-cols-4">
-              <p>
-                <span className="font-semibold">Financial Year:</span>{" "}
-                {businessData.quarter || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Owner:</span>{" "}
-                {businessData.ownerName || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Email:</span>{" "}
-                {businessData.ownerEmail || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Submitted:</span>{" "}
-                {businessData.createdAt
-                  ? new Date(businessData.createdAt).toLocaleString()
-                  : "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Reviewed By:</span>{" "}
-                {businessData.reviewerName || "-"}
-              </p>
-              <p>
-                <span className="font-semibold">Rejection Msg:</span>{" "}
-                {businessData.rejectionMessage || "-"}
-              </p>
-            </div>
-          </div>
-
-          {isAdmin && (
-            <div className="rounded-md border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-900">
-                Review Action
-              </h3>
-              <textarea
-                value={rejectMessage}
-                onChange={(event) => setRejectMessage(event.target.value)}
-                rows={4}
-                className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                placeholder="Optional reviewer comment"
-              />
-              <div className="mt-4 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleReview("approve")}
-                  disabled={processingReview}
-                  className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-70"
-                >
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleReview("reject")}
-                  disabled={processingReview}
-                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-70"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-md border border-gray-200 p-5">
-            <h3 className="mb-3 text-sm font-semibold text-gray-900">
-              Detailed Information
-            </h3>
-
-            <div className="mb-4 overflow-x-auto">
-              <div className="relative min-w-190 px-2 pb-1">
-                <div className="absolute left-8 right-8 top-4 h-0.5 bg-gray-300" />
-                <div
-                  className="absolute left-8 top-4 h-0.5 bg-primary transition-all duration-200"
-                  style={{
-                    width: `calc((100% - 4rem) * ${detailStepProgress / 100})`,
-                  }}
-                />
-                <div className="relative flex items-start justify-between gap-2">
-                  {detailSteps.map((step, index) => {
-                    const isActiveStep = index === activeDetailStep;
-                    const isCompletedStep = index < activeDetailStep;
-
-                    return (
-                      <button
-                        key={step.key}
-                        type="button"
-                        onClick={() => setActiveDetailStep(index)}
-                        className="flex w-24 flex-col items-center text-center"
-                      >
-                        <span
-                          className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${
-                            isActiveStep || isCompletedStep
-                              ? "border-primary bg-primary text-white"
-                              : "border-gray-300 bg-white text-gray-600"
-                          }`}
-                        >
-                          {index + 1}
-                        </span>
-                        <span
-                          className={`mt-2 text-xs ${
-                            isActiveStep
-                              ? "font-semibold text-primary"
-                              : "text-gray-600"
-                          }`}
-                        >
-                          {step.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              {renderDetails(
-                businessData[detailSteps[activeDetailStep]?.key] || {},
-              )}
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveDetailStep((previous) => Math.max(0, previous - 1))
-                }
-                disabled={activeDetailStep === 0}
-                className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <span className="text-xs text-gray-500">
-                Step {activeDetailStep + 1} of {detailSteps.length}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveDetailStep((previous) =>
-                    Math.min(detailSteps.length - 1, previous + 1),
-                  )
-                }
-                disabled={activeDetailStep === detailSteps.length - 1}
-                className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div className="p-6 max-w-4xl mx-auto">
       <Alert
-        isOpen={alertState.isOpen}
-        onClose={() =>
-          setAlertState((previous) => ({ ...previous, isOpen: false }))
-        }
-        severity={alertState.severity}
         message={alertState.message}
+        severity={alertState.severity}
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
       />
-    </section>
+
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-6 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+      >
+        ← Back
+      </button>
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h1 className="text-2xl font-bold mb-6">Business Details</h1>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {Object.entries(business).map(([key, value]) => (
+            <div key={key} className="border-b border-gray-200 pb-4">
+              <label className="text-sm font-semibold text-gray-700 uppercase">
+                {key.replace(/_/g, " ")}
+              </label>
+              <p className="text-gray-900 mt-1">
+                {value === null || value === undefined ? "-" : String(value)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

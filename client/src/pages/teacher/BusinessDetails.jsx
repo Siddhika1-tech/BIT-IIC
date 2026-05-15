@@ -1,1317 +1,185 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { createBusinessDetails } from "../../../config/api";
 import { getAuthToken, getAuthUser } from "../../utils/auth";
 import Alert from "../../components/Alert";
-import SearchableSelect from "../../components/SearchableSelect";
 
 const BUSINESS_DETAILS_STORAGE_KEY = "business-details-form-values";
 
-const countWords = (value) => {
-  const normalizedValue = String(value ?? "")
-    .trim()
-    .replace(/\s+/g, " ");
-  return normalizedValue ? normalizedValue.split(" ").length : 0;
-};
-
-const businessFields = [
-  {
-    key: "innovationTitle",
-    label: "Start-up / Venture Name",
-    type: "text",
-    required: true,
-  },
-  {
-    key: "instituteName",
-    label: "Website of Startup (if any)",
-    type: "url",
-    required: false,
-  },
-  {
-    key: "registrationType",
-    label: "Startup / Venture Registered As",
-    type: "select",
-    required: true,
-    options: [
-      "Not Yet Registered as an Entity",
-      "SME Registered Unit (Valid GST No.)",
-      "Registered Partnership Firm",
-      "Limited Liability Partnership (LLP)",
-      "Private Limited Firm",
-      "One Person Company (OPC)",
-    ],
-  },
-  {
-    key: "smeRegisteredUnitGstNo",
-    label: "SME Registered Unit (Valid GST No.)",
-    type: "text",
-    required: true,
-  },
-  {
-    key: "gstCertificateCopy",
-    label: "GST Certificate Copy",
-    type: "file",
-    required: true,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "fyOfDevelopment",
-    label: "Year of Establishment (FY) :",
-    type: "select",
-    required: true,
-    options: [
-      "2019-20",
-      "2020-21",
-      "2021-22",
-      "2022-23",
-      "2023-24",
-      "2024-25",
-      "2025-26",
-      "2026-27",
-    ],
-  },
-  {
-    key: "keyInnovation",
-    label: "Name a Key Innovation which is Core to the Startup / Venture",
-    type: "text",
-    required: true,
-  },
-  {
-    key: "sectorDomain",
-    label: "Sector / Domain",
-    type: "select",
-    required: true,
-    options: [
-      "Healthcare & Biomedical devices.",
-      "Agriculture & Rural Development.",
-      "Smart Vehicles / Electric Vehicle Technology.",
-      "Food Processing / Nutrition / Biotech",
-      "Robotics and Drones.",
-      "Waste Management / Waste to Wealth Creation",
-      "Clean & Potable Water.",
-      "Renewable and Affordable Energy.",
-      "IoT based technologies",
-      "ICT / Blockchain / Cloud / AI / ML",
-      "Software - Mobile App Development",
-      "Software - Web App Development",
-      "Smart Education",
-      "Smart Cities",
-      "Sports & Fitness",
-      "Sustainable Environment",
-      "Manufacturing",
-      "Defence & Security",
-      "Consumer Goods and Retail",
-      "Education",
-    ],
-  },
-  {
-    key: "developedAsPartOf",
-    label: "Developed As Part Of",
-    type: "select",
-    required: true,
-    options: [
-      "Academic Requirement / Study Project",
-      "Academic Research Assignment / Industry Sponsored Project",
-      "Independent Assignment / Non-academic Study Project",
-    ],
-  },
-  {
-    key: "innovationType",
-    label: "Innovation Type",
-    type: "select",
-    required: true,
-    options: [
-      "Product",
-      "Process",
-      "Service",
-      "Market Place",
-      "Business / Management Innovation",
-    ],
-  },
-  {
-    key: "developmentStage",
-    label: "Development Stage - TRL",
-    type: "select",
-    required: true,
-    options: [
-      "TRL 4: Small scale prototype built in a laboratory environment",
-      "TRL 5: Large scale prototype tested in intended environment",
-      "TRL 6: Prototype system tested close to expected performance",
-      "TRL 7: Demonstration system at pre-commercial scale",
-      "TRL 8: First commercial system",
-      "TRL 9: Full commercial application",
-    ],
-  },
-  {
-    key: "developmentStageMrl",
-    label: "Development Stage - MRL",
-    type: "select",
-    required: true,
-    options: [
-      "MRL 1: Basic manufacturing implications identified",
-      "MRL 2: Manufacturing concepts identified",
-      "MRL 3: Manufacturing proof of concept developed",
-      "MRL 4: Capability to produce in a laboratory environment",
-      "MRL 5: Capability to produce prototype components",
-      "MRL 6: Capability to produce a prototype system",
-      "MRL 7: Production representative environment",
-      "MRL 8: Pilot line capability demonstrated",
-      "MRL 9: Low rate production demonstrated",
-      "MRL 10: Full rate production demonstrated",
-    ],
-  },
-  {
-    key: "developmentStageIrl",
-    label: "Development Stage - IRL",
-    type: "select",
-    required: true,
-    options: [
-      "IRL 1: Basic Research",
-      "IRL 2: Applied Research",
-      "IRL 3: Problem - Solution Fit Validated",
-      "IRL 4: Low-fidelity MVP",
-      "IRL 5: Product-Market Fit Validation",
-      "IRL 6: Business / Revenue Model Validation",
-      "IRL 7: High Fidelity MVP",
-      "IRL 8: Pre-Commercial Demonstration",
-      "IRL 9: Full Commercial Development",
-    ],
-  },
-  {
-    key: "rpfYearOfEstablishment",
-    label: "Year of Establishment (FY)",
-    type: "select",
-    required: false,
-    options: [
-      "2019-20",
-      "2020-21",
-      "2021-22",
-      "2022-23",
-      "2023-24",
-      "2024-25",
-      "2025-26",
-      "2026-27",
-    ],
-  },
-  {
-    key: "rpfCorporateIdentificationNo",
-    label: "Corporate Identification No (CIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "rpfCinCopy",
-    label: "Corporate Identification No (CIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "rpfDirectorIdentificationNo",
-    label: "Director's Identification Number (DIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "rpfDinCopy",
-    label: "Director's Identification Number (DIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "rpfDpiitRecognition",
-    label: "Does your Startup/Venture Recognized by DPIIT, Startup India?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "rpfDpiitDocument",
-    label: "DPIIT Recognition Document",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "llpCorporateIdentificationNo",
-    label: "Corporate Identification No (CIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "llpCinCopy",
-    label: "Corporate Identification No (CIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "llpDirectorIdentificationNo",
-    label: "Director's Identification Number (DIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "llpDinCopy",
-    label: "Director's Identification Number (DIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "pvtYearOfEstablishment",
-    label: "Year of Establishment (FY)",
-    type: "select",
-    required: false,
-    options: [
-      "2019-20",
-      "2020-21",
-      "2021-22",
-      "2022-23",
-      "2023-24",
-      "2024-25",
-      "2025-26",
-      "2026-27",
-    ],
-  },
-  {
-    key: "pvtCorporateIdentificationNo",
-    label: "Corporate Identification No (CIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "pvtCinCopy",
-    label: "Corporate Identification No (CIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "pvtDirectorIdentificationNo",
-    label: "Director's Identification Number (DIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "pvtDinCopy",
-    label: "Director's Identification Number (DIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "pvtDpiitRecognition",
-    label: "Does your Startup/Venture Recognized by DPIIT, Startup India?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "pvtDpiitDocument",
-    label: "DPIIT Recognition Document",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "opcYearOfEstablishment",
-    label: "Year of Establishment (FY)",
-    type: "select",
-    required: false,
-    options: [
-      "2019-20",
-      "2020-21",
-      "2021-22",
-      "2022-23",
-      "2023-24",
-      "2024-25",
-      "2025-26",
-      "2026-27",
-    ],
-  },
-  {
-    key: "opcCorporateIdentificationNo",
-    label: "Corporate Identification No (CIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "opcCinCopy",
-    label: "Corporate Identification No (CIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "opcDirectorIdentificationNo",
-    label: "Director's Identification Number (DIN)",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "opcDinCopy",
-    label: "Director's Identification Number (DIN) Copy",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "opcDpiitRecognition",
-    label: "Does your Startup/Venture Recognized by DPIIT, Startup India?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "opcDpiitDocument",
-    label: "DPIIT Recognition Document",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "problemRelevance",
-    label:
-      "Define the Problem - Solution fit achieved/to be achieved by the Startup: Briefly explain the relevance of the innovative solutions are being offered by the startup and what/whose problem (Industry/Society/Market) these are solving.",
-    type: "textarea",
-    required: true,
-  },
-  {
-    key: "solutionDescription",
-    label:
-      "Define the Product-Market fit achieved/ to be achieved by the Startup: Briefly explain the readiness levels (Technology Readiness Level and Manufacturing Readiness Level) of innovations/solutions offered by the startup to meet the customer need/requirement.",
-    type: "textarea",
-    required: true,
-  },
-  {
-    key: "uniquenessFeatures",
-    label:
-      "Detail the potential market size and target customers/segment (Total Available Market - TAM, Serviceable Available Market - SAM, Serviceable Obtainable Market - SOM).",
-    type: "textarea",
-    required: true,
-  },
-  {
-    key: "competitorDifference",
-    label:
-      "Detail the Business fit achieved/ to be achieved by the Startup: Briefly explain the business model readiness level of innovations to be commercialized. Business Tractions Achieved for the innovation if any, briefly explain the customer tractions achieved for the innovations or solutions offered by the Startup as an attempt to commercialization.",
-    type: "textarea",
-    required: true,
-  },
-  {
-    key: "competitiveAdvantages",
-    label:
-      "Highlight any competitive advantages such as Intellectual property (IP) or any Unique Selling Proposition (USP) etc. associate with the product/service/business model/startup.",
-    type: "textarea",
-    required: true,
-  },
-  {
-    key: "ipPatentAssociated",
-    label:
-      "Is there any Intellectual Property (IP) associated with the Solution being offered by the Startup/Venture?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "ipPatentDocument",
-    label:
-      "If YES, Intellectual Property (IP) Copy Image (Max 2 MB and in jpg, png format)",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "instituteInnovationGrantReceived",
-    label:
-      "Did the venture/start-up receive any innovation grant from the Institute?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "incubationUnitName",
-    label: "If YES, Mention the Pre-Incubation / Incubation Unit Name",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "instituteGrantAmount",
-    label: "Mention Total Grant Amount Received in past three Financial Years",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "externalInnovationGrantReceived",
-    label:
-      "Did the venture/start-up receive any innovation grant from any external sources, so far?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "externalGrantAmount",
-    label:
-      "If YES, Mention Total Grant Amount Received in past three Financial Years",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "angelInvestment",
-    label:
-      "Did the venture/start-up raise any Angel/Venture Capital Investment so far?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "investmentAmount",
-    label:
-      "If YES, Mention Total Grant Amount Received in past three Financial Years",
-    type: "text",
-    required: false,
-  },
-  {
-    key: "recognitionAwardReceived",
-    label:
-      "Are there any recognitions/awards received by the venture/start-up for the innovation in National/International Competitions?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "recognitionAwardDocument",
-    label:
-      "If YES, Upload the Certificate copy of Recent Recognition/award Received (Max 2 MB and in jpg, png format)",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-  {
-    key: "annualTurnover50Lakhs",
-    label:
-      "Has the startup grown to an annual business turnover of Rs. 50 Lakhs during any last three FYs?",
-    type: "select",
-    required: true,
-    options: ["YES", "NO"],
-  },
-  {
-    key: "annualTurnoverDocument",
-    label:
-      "If YES, Upload the Audited copy of the financial Statement clearly indicating the FY and Annual turnover amount of Rs. 50 Lakhs or above (Max 2 MB and in jpg, png format)",
-    type: "file",
-    required: false,
-    accept: ".jpg,.jpeg,.png",
-    maxSizeBytes: 2 * 1024 * 1024,
-  },
-];
-
-const displayStructure = [
-  {
-    section: "Business Details",
-    fields: ["innovationTitle", "instituteName"],
-  },
-  {
-    section: "Venture Details",
-    fields: [
-      "registrationType",
-      { type: "subsectionHeader", label: "2.A SME Registration & GST Details" },
-      "fyOfDevelopment",
-      "smeRegisteredUnitGstNo",
-      "gstCertificateCopy",
-      { type: "subsectionHeader", label: "2.B Registered Partnership Firm" },
-      "rpfYearOfEstablishment",
-      "rpfCorporateIdentificationNo",
-      "rpfCinCopy",
-      "rpfDirectorIdentificationNo",
-      "rpfDinCopy",
-      "rpfDpiitRecognition",
-      "rpfDpiitDocument",
-      {
-        type: "subsectionHeader",
-        label: "2.C Limited Liability Partnership Firm (LLP)",
-      },
-      "llpCorporateIdentificationNo",
-      "llpCinCopy",
-      "llpDirectorIdentificationNo",
-      "llpDinCopy",
-      {
-        type: "subsectionHeader",
-        label: "2.D Private Limited Firm (Pvt. Ltd.)",
-      },
-      "pvtYearOfEstablishment",
-      "pvtCorporateIdentificationNo",
-      "pvtCinCopy",
-      "pvtDirectorIdentificationNo",
-      "pvtDinCopy",
-      "pvtDpiitRecognition",
-      "pvtDpiitDocument",
-      { type: "subsectionHeader", label: "2.E One Person Company (OPC)" },
-      "opcYearOfEstablishment",
-      "opcCorporateIdentificationNo",
-      "opcCinCopy",
-      "opcDirectorIdentificationNo",
-      "opcDinCopy",
-      "opcDpiitRecognition",
-      "opcDpiitDocument",
-    ],
-  },
-  {
-    section: "Innovation Profile",
-    fields: [
-      "keyInnovation",
-      "sectorDomain",
-      "developedAsPartOf",
-      "innovationType",
-      "developmentStage",
-      "developmentStageMrl",
-      "developmentStageIrl",
-    ],
-  },
-  {
-    section: "Overview",
-    fields: [
-      "problemRelevance",
-      "solutionDescription",
-      "uniquenessFeatures",
-      "competitorDifference",
-      "competitiveAdvantages",
-    ],
-  },
-  {
-    section: "Attachments",
-    fields: [
-      "ipPatentAssociated",
-      "ipPatentDocument",
-      "instituteInnovationGrantReceived",
-      "incubationUnitName",
-      "instituteGrantAmount",
-      "externalInnovationGrantReceived",
-      "externalGrantAmount",
-      "angelInvestment",
-      "investmentAmount",
-      "recognitionAwardReceived",
-      "recognitionAwardDocument",
-      "annualTurnover50Lakhs",
-      "annualTurnoverDocument",
-    ],
-  },
-];
-
-const attachmentConditionalFields = {
-  ipPatentDocument: "ipPatentAssociated",
-  incubationUnitName: "instituteInnovationGrantReceived",
-  instituteGrantAmount: "instituteInnovationGrantReceived",
-  externalGrantAmount: "externalInnovationGrantReceived",
-  investmentAmount: "angelInvestment",
-  recognitionAwardDocument: "recognitionAwardReceived",
-  annualTurnoverDocument: "annualTurnover50Lakhs",
-  rpfDpiitDocument: "rpfDpiitRecognition",
-  pvtDpiitDocument: "pvtDpiitRecognition",
-  opcDpiitDocument: "opcDpiitRecognition",
-};
-
-function BusinessDetails() {
-  const navigate = useNavigate();
-  const fields = useMemo(() => businessFields, []);
-  const fieldsByKey = useMemo(
-    () =>
-      fields.reduce(
-        (accumulator, field) => ({ ...accumulator, [field.key]: field }),
-        {},
-      ),
-    [fields],
-  );
-  const structuredSections = useMemo(() => {
-    const renderedKeys = new Set();
-
-    return displayStructure
-      .map((section) => {
-        const sectionFields = section.fields
-          .map((fieldKeyOrObject) => {
-            if (
-              typeof fieldKeyOrObject === "object" &&
-              fieldKeyOrObject.type === "subsectionHeader"
-            ) {
-              return fieldKeyOrObject;
-            }
-            return fieldsByKey[fieldKeyOrObject];
-          })
-          .filter(Boolean)
-          .filter((field) => {
-            if (
-              typeof field === "object" &&
-              field.type === "subsectionHeader"
-            ) {
-              return true;
-            }
-            if (renderedKeys.has(field.key)) {
-              return false;
-            }
-
-            renderedKeys.add(field.key);
-            return true;
-          });
-
-        return {
-          section: section.section,
-          fields: sectionFields,
-        };
-      })
-      .filter((section) => section.fields.length > 0);
-  }, [fieldsByKey]);
-
-  const initialValues = useMemo(
-    () =>
-      fields.reduce((accumulator, field) => {
-        accumulator[field.key] = field.type === "file" ? null : "";
-        return accumulator;
-      }, {}),
-    [fields],
-  );
-
-  const [formValues, setFormValues] = useState(() => {
-    if (typeof window === "undefined") {
-      return initialValues;
-    }
-
-    try {
-      const rawStoredValues = window.localStorage.getItem(
-        BUSINESS_DETAILS_STORAGE_KEY,
-      );
-      if (!rawStoredValues) {
-        return initialValues;
-      }
-
-      const parsedValues = JSON.parse(rawStoredValues);
-      if (!parsedValues || typeof parsedValues !== "object") {
-        return initialValues;
-      }
-
-      return fields.reduce((accumulator, field) => {
-        if (field.type === "file") {
-          accumulator[field.key] = null;
-        } else {
-          accumulator[field.key] = String(parsedValues[field.key] ?? "");
-        }
-        return accumulator;
-      }, {});
-    } catch {
-      return initialValues;
-    }
+export default function BusinessDetails() {
+  const token = useMemo(() => getAuthToken(), []);
+  const user = useMemo(() => getAuthUser(), []);
+  const [formValues, setFormValues] = useState({
+    businessName: "",
+    description: "",
+    document: null,
   });
-  const [errors, setErrors] = useState({});
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [alertMessage, setAlertMessage] = useState("");
-  const [alertSeverity, setAlertSeverity] = useState("success");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    message: "",
+    severity: "info",
+  });
 
-  const maxWordsByKey = {
-    innovationTitle: 20,
-    keyInnovation: 20,
-    problemRelevance: 100,
-    solutionDescription: 100,
-    uniquenessFeatures: 100,
-    competitorDifference: 100,
-    competitiveAdvantages: 100,
+  // Load saved values from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(BUSINESS_DETAILS_STORAGE_KEY);
+    if (saved) {
+      try {
+        setFormValues(JSON.parse(saved));
+      } catch (error) {
+        console.error("Failed to load saved form values:", error);
+      }
+    }
+  }, []);
+
+  // Save form values to localStorage
+  const saveFormValues = (values) => {
+    const toSave = { ...values };
+    delete toSave.document;
+    localStorage.setItem(BUSINESS_DETAILS_STORAGE_KEY, JSON.stringify(toSave));
   };
 
-  useEffect(() => {
-    if (currentStepIndex > structuredSections.length - 1) {
-      setCurrentStepIndex(Math.max(0, structuredSections.length - 1));
-    }
-  }, [currentStepIndex, structuredSections.length]);
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    const newValues = { ...formValues, [name]: value };
+    setFormValues(newValues);
+    saveFormValues(newValues);
+  };
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+  const handleFileChange = (e) => {
+    const { files } = e.target;
+    const newValues = { ...formValues, document: files?.[0] || null };
+    setFormValues(newValues);
+  };
 
-    const serializableValues = {};
-    fields.forEach((field) => {
-      if (field.type !== "file") {
-        serializableValues[field.key] = formValues[field.key];
-      }
-    });
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-    window.localStorage.setItem(
-      BUSINESS_DETAILS_STORAGE_KEY,
-      JSON.stringify(serializableValues),
-    );
-  }, [fields, formValues]);
-
-  const handleChange = (field, value) => {
-    if (field.type === "file" && value && field.accept) {
-      const acceptList = field.accept
-        .split(",")
-        .map((entry) => entry.trim().toLowerCase())
-        .filter(Boolean);
-      const fileName = String(value.name ?? "").toLowerCase();
-      const fileType = String(value.type ?? "").toLowerCase();
-      const isAllowed = acceptList.some((acceptEntry) => {
-        if (acceptEntry.startsWith(".")) {
-          return fileName.endsWith(acceptEntry);
-        }
-        return acceptEntry === fileType;
+    if (!formValues.businessName.trim()) {
+      setAlertState({
+        isOpen: true,
+        message: "Business name is required.",
+        severity: "error",
       });
-
-      if (!isAllowed) {
-        setErrors((previous) => ({
-          ...previous,
-          [field.key]: `Invalid file type. Allowed: ${field.accept}`,
-        }));
-        return;
-      }
-    }
-
-    if (
-      field.type === "file" &&
-      value &&
-      field.maxSizeBytes &&
-      value.size > field.maxSizeBytes
-    ) {
-      const maxMb = Math.round(field.maxSizeBytes / (1024 * 1024));
-      setErrors((previous) => ({
-        ...previous,
-        [field.key]: `${field.label} must be ${maxMb}MB or less.`,
-      }));
       return;
     }
 
-    if (
-      maxWordsByKey[field.key] &&
-      countWords(value) > maxWordsByKey[field.key]
-    ) {
-      setErrors((previous) => ({
-        ...previous,
-        [field.key]: `${field.label} must be ${maxWordsByKey[field.key]} words or less.`,
-      }));
+    if (!formValues.description.trim()) {
+      setAlertState({
+        isOpen: true,
+        message: "Description is required.",
+        severity: "error",
+      });
       return;
     }
 
-    setFormValues((previous) => {
-      const nextValues = { ...previous, [field.key]: value };
-
-      if (field.key === "ipPatentAssociated" && value !== "YES") {
-        nextValues.ipPatentDocument = null;
-      }
-
-      if (field.key === "instituteInnovationGrantReceived" && value !== "YES") {
-        nextValues.incubationUnitName = "";
-        nextValues.instituteGrantAmount = "";
-      }
-
-      if (field.key === "externalInnovationGrantReceived" && value !== "YES") {
-        nextValues.externalGrantAmount = "";
-      }
-
-      if (field.key === "angelInvestment" && value !== "YES") {
-        nextValues.investmentAmount = "";
-      }
-
-      if (field.key === "recognitionAwardReceived" && value !== "YES") {
-        nextValues.recognitionAwardDocument = null;
-      }
-
-      if (field.key === "annualTurnover50Lakhs" && value !== "YES") {
-        nextValues.annualTurnoverDocument = null;
-      }
-
-      if (field.key === "rpfDpiitRecognition" && value !== "YES") {
-        nextValues.rpfDpiitDocument = null;
-      }
-
-      if (field.key === "pvtDpiitRecognition" && value !== "YES") {
-        nextValues.pvtDpiitDocument = null;
-      }
-
-      if (field.key === "opcDpiitRecognition" && value !== "YES") {
-        nextValues.opcDpiitDocument = null;
-      }
-
-      return nextValues;
-    });
-
-    setErrors((previous) => {
-      const nextErrors = { ...previous, [field.key]: "" };
-
-      if (field.key === "ipPatentAssociated" && value !== "YES") {
-        nextErrors.ipPatentDocument = "";
-      }
-
-      if (field.key === "instituteInnovationGrantReceived" && value !== "YES") {
-        nextErrors.incubationUnitName = "";
-        nextErrors.instituteGrantAmount = "";
-      }
-
-      if (field.key === "externalInnovationGrantReceived" && value !== "YES") {
-        nextErrors.externalGrantAmount = "";
-      }
-
-      if (field.key === "angelInvestment" && value !== "YES") {
-        nextErrors.investmentAmount = "";
-      }
-
-      if (field.key === "recognitionAwardReceived" && value !== "YES") {
-        nextErrors.recognitionAwardDocument = "";
-      }
-
-      if (field.key === "annualTurnover50Lakhs" && value !== "YES") {
-        nextErrors.annualTurnoverDocument = "";
-      }
-
-      if (field.key === "rpfDpiitRecognition" && value !== "YES") {
-        nextErrors.rpfDpiitDocument = "";
-      }
-
-      if (field.key === "pvtDpiitRecognition" && value !== "YES") {
-        nextErrors.pvtDpiitDocument = "";
-      }
-
-      if (field.key === "opcDpiitRecognition" && value !== "YES") {
-        nextErrors.opcDpiitDocument = "";
-      }
-
-      return nextErrors;
-    });
-  };
-
-  const validate = () => {
-    const nextErrors = {};
-
-    fields.forEach((field) => {
-      if (!field.required) {
-        return;
-      }
-
-      const value = formValues[field.key];
-      const isMissing =
-        field.type === "file" ? !value : !String(value ?? "").trim();
-
-      if (isMissing) {
-        nextErrors[field.key] = `${field.label} is mandatory`;
-        return;
-      }
-
-      if (
-        maxWordsByKey[field.key] &&
-        countWords(value) > maxWordsByKey[field.key]
-      ) {
-        nextErrors[field.key] =
-          `${field.label} must be ${maxWordsByKey[field.key]} words or less.`;
-      }
-    });
-
-    Object.entries(attachmentConditionalFields).forEach(
-      ([fieldKey, dependencyKey]) => {
-        if (String(formValues[dependencyKey] ?? "") !== "YES") {
-          return;
-        }
-
-        const field = fieldsByKey[fieldKey];
-        if (!field) {
-          return;
-        }
-
-        const value = formValues[fieldKey];
-        const isMissing =
-          field.type === "file" ? !value : !String(value ?? "").trim();
-
-        if (isMissing) {
-          nextErrors[fieldKey] =
-            `${field.label} is mandatory when ${fieldsByKey[dependencyKey]?.label || dependencyKey} is YES`;
-        }
-      },
-    );
-
-    setErrors(nextErrors);
-    return nextErrors;
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    const validationErrors = validate();
-    if (Object.keys(validationErrors).length > 0) {
-      setAlertMessage(
-        Object.values(validationErrors)[0] ||
-          "Please complete all required fields.",
-      );
-      setAlertSeverity("error");
-      setAlertOpen(true);
-      return;
-    }
-
-    setIsSubmitting(true);
-
+    setLoading(true);
     try {
-      const token = getAuthToken();
-      const user = getAuthUser();
-
-      if (!token) {
-        throw new Error("Please login again to continue.");
+      const formData = new FormData();
+      formData.append("businessName", formValues.businessName);
+      formData.append("description", formValues.description);
+      if (formValues.document) {
+        formData.append("document", formValues.document);
       }
 
-      const formData = new FormData();
-      fields.forEach((field) => {
-        const value = formValues[field.key];
+      const payload = await createBusinessDetails(formData, token);
 
-        if (field.type === "file") {
-          if (value) {
-            formData.append(field.key, value);
-          }
-          return;
-        }
-
-        formData.append(field.key, String(value ?? ""));
+      setAlertState({
+        isOpen: true,
+        message: "Business details submitted successfully!",
+        severity: "success",
       });
 
-      await createBusinessDetails(formData, token);
-      window.localStorage.removeItem(BUSINESS_DETAILS_STORAGE_KEY);
-      setFormValues(initialValues);
-      setErrors({});
-      setAlertMessage("Business details uploaded successfully.");
-      setAlertSeverity("success");
-      setAlertOpen(true);
-
-      window.setTimeout(() => {
-        navigate(
-          user?.roleName === "admin"
-            ? "/admin/businesses"
-            : "/teacher/businesses",
-          { replace: true },
-        );
-      }, 700);
+      localStorage.removeItem(BUSINESS_DETAILS_STORAGE_KEY);
+      setFormValues({
+        businessName: "",
+        description: "",
+        document: null,
+      });
     } catch (error) {
-      setAlertMessage(error.message || "Failed to upload business details.");
-      setAlertSeverity("error");
-      setAlertOpen(true);
+      setAlertState({
+        isOpen: true,
+        message: error.message || "Failed to submit business details.",
+        severity: "error",
+      });
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
-
-  const renderFieldHint = (field) => {
-    if (field.type === "file" && field.maxSizeBytes) {
-      const maxMb = Math.round(field.maxSizeBytes / (1024 * 1024));
-      return (
-        <p className="text-xs text-gray-500">JPG / PNG only, max {maxMb}MB</p>
-      );
-    }
-
-    if (field.type === "textarea" && maxWordsByKey[field.key]) {
-      return (
-        <p className="text-xs text-gray-500">
-          Max {maxWordsByKey[field.key]} words
-        </p>
-      );
-    }
-
-    return null;
-  };
-
-  const renderField = (field) => (
-    <div key={field.key} className="space-y-1">
-      <label
-        className="block text-sm font-medium text-gray-800"
-        htmlFor={field.key}
-      >
-        {field.label}{" "}
-        {field.required && <span className="text-red-600">*</span>}
-      </label>
-
-      {field.type === "textarea" && (
-        <div className="space-y-1">
-          <textarea
-            id={field.key}
-            name={field.key}
-            value={formValues[field.key]}
-            onChange={(event) => handleChange(field, event.target.value)}
-            className="w-full rounded border border-gray-300 p-2 outline-none focus:border-gray-500"
-            rows={4}
-          />
-          {maxWordsByKey[field.key] && (
-            <p
-              className={`text-xs ${
-                countWords(formValues[field.key]) / maxWordsByKey[field.key] >=
-                0.8
-                  ? "text-red-600"
-                  : "text-gray-500"
-              }`}
-            >
-              {countWords(formValues[field.key])}/{maxWordsByKey[field.key]}
-            </p>
-          )}
-        </div>
-      )}
-
-      {field.type === "file" && (
-        <div className="space-y-1">
-          <input
-            id={field.key}
-            name={field.key}
-            type="file"
-            accept={field.accept}
-            onChange={(event) =>
-              handleChange(field, event.target.files?.[0] ?? null)
-            }
-            className="w-full rounded border border-gray-300 p-2 outline-none focus:border-gray-500"
-          />
-          {formValues[field.key] instanceof File && (
-            <p className="text-xs text-gray-600">
-              Selected: {formValues[field.key].name}
-            </p>
-          )}
-        </div>
-      )}
-
-      {field.type === "select" && (
-        <SearchableSelect
-          value={String(formValues[field.key] ?? "")}
-          onChange={(nextValue) => handleChange(field, nextValue)}
-          options={field.options || []}
-          emptyLabel="Select"
-          placeholder="Select"
-        />
-      )}
-
-      {!["textarea", "file", "select"].includes(field.type) && (
-        <input
-          id={field.key}
-          name={field.key}
-          type={field.type}
-          value={formValues[field.key]}
-          onChange={(event) => handleChange(field, event.target.value)}
-          className="w-full rounded border border-gray-300 p-2 outline-none focus:border-gray-500"
-        />
-      )}
-
-      {renderFieldHint(field)}
-
-      {errors[field.key] && (
-        <p className="text-sm text-red-600">{errors[field.key]}</p>
-      )}
-    </div>
-  );
-
-  const shouldShowField = (fieldKeyOrObject) => {
-    if (typeof fieldKeyOrObject === "object") {
-      return true;
-    }
-
-    const dependencyKey = attachmentConditionalFields[fieldKeyOrObject];
-    if (!dependencyKey) {
-      return true;
-    }
-
-    return String(formValues[dependencyKey] ?? "") === "YES";
-  };
-
-  const isLastStep = currentStepIndex === structuredSections.length - 1;
-  const stepProgress =
-    structuredSections.length > 1
-      ? (currentStepIndex / (structuredSections.length - 1)) * 100
-      : 0;
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-2">
-      <div className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white via-[#faf8ff] to-white px-5 py-6 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="p-6 max-w-2xl mx-auto">
+      <Alert
+        message={alertState.message}
+        severity={alertState.severity}
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
+      />
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h1 className="text-2xl font-bold mb-6">Business Details Form</h1>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-              Register a Startup
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7a80a6]">
-              Fill in the business details carefully and submit all required
-              documents in one responsive workflow.
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Business Name *
+            </label>
+            <input
+              type="text"
+              name="businessName"
+              value={formValues.businessName}
+              onChange={handleInputChange}
+              placeholder="Enter business name"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Description *
+            </label>
+            <textarea
+              name="description"
+              value={formValues.description}
+              onChange={handleInputChange}
+              placeholder="Enter business description"
+              rows="5"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Document (Optional)
+            </label>
+            <input
+              type="file"
+              name="document"
+              onChange={handleFileChange}
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Accepted formats: PDF, JPG, JPEG, PNG (Max 2MB)
             </p>
+            {formValues.document && (
+              <p className="text-sm text-gray-700 mt-2">
+                Selected: {formValues.document.name}
+              </p>
+            )}
           </div>
-          <div className="rounded-full bg-primary-light px-3 py-1 text-xs font-semibold text-primary">
-            {structuredSections.length} steps
-          </div>
-        </div>
-      </div>
 
-      <form className="mt-4 space-y-4" onSubmit={handleSubmit} noValidate>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <div className="mt-4 overflow-x-auto">
-            <div className="relative min-w-190 px-2 pb-1">
-              <div className="absolute left-8 right-8 top-4 h-0.5 bg-gray-300" />
-              <div
-                className="absolute left-8 top-4 h-0.5 bg-primary transition-all duration-200"
-                style={{ width: `calc((100% - 4rem) * ${stepProgress / 100})` }}
-              />
-              <div className="relative flex items-start justify-between gap-2">
-                {structuredSections.map((group, index) => {
-                  const isActiveStep = index === currentStepIndex;
-                  const isCompletedStep = index < currentStepIndex;
-
-                  return (
-                    <button
-                      key={group.section}
-                      type="button"
-                      onClick={() => setCurrentStepIndex(index)}
-                      className="flex w-28 flex-col items-center text-center"
-                    >
-                      <span
-                        className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${
-                          isActiveStep || isCompletedStep
-                            ? "border-primary bg-primary text-white"
-                            : "border-gray-300 bg-white text-gray-600"
-                        }`}
-                      >
-                        {index + 1}
-                      </span>
-                      <span
-                        className={`mt-2 text-xs ${
-                          isActiveStep
-                            ? "font-semibold text-primary"
-                            : "text-gray-600"
-                        }`}
-                      >
-                        {group.section}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {structuredSections.map((step, index) => (
-          <section
-            key={step.section}
-            className={`rounded-lg border border-gray-200 bg-white p-4 ${
-              index === currentStepIndex ? "block" : "hidden"
-            }`}
-          >
-            <h2 className="text-lg font-medium text-gray-900">
-              {step.section}
-            </h2>
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              {step.fields
-                .filter((field) =>
-                  shouldShowField(
-                    typeof field === "object" &&
-                      field.type === "subsectionHeader"
-                      ? field
-                      : field.key
-                        ? field.key
-                        : null,
-                  ),
-                )
-                .map((field) => {
-                  if (
-                    typeof field === "object" &&
-                    field.type === "subsectionHeader"
-                  ) {
-                    // Extract section code (e.g., "2A" from "2.A SME Registration & GST Details")
-                    const sectionCode =
-                      field.label.match(/^\d+\.\w+/)?.[0]?.replace(".", "") ||
-                      "";
-                    const sectionTitle = field.label.replace(
-                      /^\d+\.\w+\s+/,
-                      "",
-                    );
-
-                    return (
-                      <div
-                        key={`subsection-${field.label}`}
-                        className="col-span-1 md:col-span-2 pt-6 pb-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="text-[#6c5ce7] font-bold text-xs flex-shrink-0"
-                            style={{ fontSize: "12px" }}
-                          >
-                            {sectionCode}
-                          </span>
-                          <span
-                            className="text-[#1a1a1a] font-semibold flex-shrink-0"
-                            style={{ fontSize: "14px" }}
-                          >
-                            {sectionTitle}
-                          </span>
-                          <div
-                            className="flex-1"
-                            style={{
-                              height: "1.5px",
-                              backgroundColor: "#6c5ce7",
-                              opacity: 0.2,
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return renderField(field);
-                })}
-            </div>
-          </section>
-        ))}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setCurrentStepIndex((previous) => Math.max(0, previous - 1))
-              }
-              disabled={currentStepIndex === 0}
-              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setCurrentStepIndex((previous) =>
-                  Math.min(structuredSections.length - 1, previous + 1),
-                )
-              }
-              disabled={isLastStep}
-              className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
           <button
             type="submit"
-            disabled={!isLastStep || isSubmitting}
-            className="rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            disabled={loading}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
           >
-            {isSubmitting ? "Saving..." : "Submit"}
+            {loading ? "Submitting..." : "Submit"}
           </button>
-        </div>
-
-        <Alert
-          isOpen={alertOpen}
-          onClose={() => setAlertOpen(false)}
-          severity={alertSeverity}
-          message={alertMessage}
-          duration={4000}
-          position="bottom"
-        />
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
-
-export default BusinessDetails;

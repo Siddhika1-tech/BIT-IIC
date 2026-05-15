@@ -7,16 +7,15 @@ import SearchableSelect from "../../components/SearchableSelect";
 import { getAuthToken } from "../../utils/auth";
 
 const statusBadgeClass = {
-  pending: "bg-yellow-100 text-yellow-700",
-  approved: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
+  pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  approved: "bg-green-50 text-green-700 border-green-200",
+  rejected: "bg-red-50 text-red-700 border-red-200",
 };
 
 export default function TeacherBusinessDashboard() {
   const token = useMemo(() => getAuthToken(), []);
   const location = useLocation();
   const [businesses, setBusinesses] = useState([]);
-  const [quarterFilter, setQuarterFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [alertState, setAlertState] = useState({
@@ -45,171 +44,125 @@ export default function TeacherBusinessDashboard() {
     loadData();
   }, [token]);
 
-  const quarterOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(businesses.map((item) => item.quarter).filter(Boolean)),
-      ).sort((left, right) => String(left).localeCompare(String(right))),
-    [businesses],
-  );
+  const statusOptions = useMemo(() => {
+    return Array.from(
+      new Set(businesses.map((item) => item.status).filter(Boolean)),
+    ).sort();
+  }, [businesses]);
 
-  const statusOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(businesses.map((item) => item.status).filter(Boolean)),
-      ),
-    [businesses],
-  );
-
-  const filteredBusinesses = useMemo(
-    () =>
-      businesses.filter((item) => {
-        if (quarterFilter && item.quarter !== quarterFilter) {
-          return false;
-        }
-
-        if (statusFilter && item.status !== statusFilter) {
-          return false;
-        }
-
-        return true;
-      }),
-    [businesses, quarterFilter, statusFilter],
-  );
-
-  const fromPath = `${location.pathname}${location.search}`;
+  const filteredBusinesses = useMemo(() => {
+    return businesses.filter((item) => {
+      if (statusFilter && item.status !== statusFilter) return false;
+      return true;
+    });
+  }, [businesses, statusFilter]);
 
   return (
-    <section className="min-h-[calc(100vh-4rem)] bg-gray-50">
-      <div className="border-b border-gray-200 bg-white px-8 py-8">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <h1 className="heading-xl">My Businesses</h1>
-            <p className="text-muted">
-              View and manage your filed business entries
-            </p>
-          </div>
+    <div className="p-6 max-w-7xl mx-auto">
+      <Alert
+        message={alertState.message}
+        severity={alertState.severity}
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
+      />
 
-          <Link
-            to="/businessdetails"
-            className="btn-primary-custom inline-flex items-center gap-2 whitespace-nowrap"
-          >
-            <CirclePlus size={18} strokeWidth={2.25} />
-            <span>New Business</span>
-          </Link>
-        </div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">My Businesses</h1>
+        <Link
+          to="/teacher/businessdetails"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+        >
+          <CirclePlus size={20} />
+          New Business
+        </Link>
       </div>
 
-      <div className="border-b border-gray-200 bg-white px-8 py-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <SearchableSelect
-            label="Financial Year"
-            value={quarterFilter}
-            onChange={setQuarterFilter}
-            options={quarterOptions}
-            emptyLabel="All Financial Years"
-          />
-
-          <SearchableSelect
-            label="Status"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={statusOptions}
-            emptyLabel="All Statuses"
-          />
-
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="flex gap-4 items-end">
+          <div className="flex-1">
+            <SearchableSelect
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={statusOptions}
+              placeholder="Filter by status..."
+            />
+          </div>
           <button
-            type="button"
-            onClick={() => {
-              setQuarterFilter("");
-              setStatusFilter("");
-            }}
-            className="btn-reset-custom self-end"
-            title="Reset filters"
+            onClick={() => setStatusFilter("")}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
           >
-            <RotateCcw size={14} strokeWidth={2} />
-            <span>Reset</span>
+            <RotateCcw size={20} />
+            Reset
           </button>
         </div>
       </div>
 
-      <div className="px-8 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <span className="badge-primary text-base">
-            {filteredBusinesses.length} business
-            {filteredBusinesses.length !== 1 ? "es" : ""}
-          </span>
-        </div>
-
-        {!loading && filteredBusinesses.length === 0 && (
-          <div className="empty-state">
-            <p className="empty-state-title">No Businesses Found</p>
-            <p className="empty-state-description">
-              Try adjusting your filters.
-            </p>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        {loading ? (
+          <div className="p-6 text-center text-gray-500">Loading...</div>
+        ) : filteredBusinesses.length === 0 ? (
+          <div className="p-6 text-center text-gray-500">
+            No businesses found. Create a new one to get started.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                    Business Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                    Submitted Date
+                  </th>
+                  <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBusinesses.map((business) => (
+                  <tr
+                    key={business.id}
+                    className="border-b border-gray-100 hover:bg-gray-50"
+                  >
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {business.business_name || "-"}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                          statusBadgeClass[business.status] ||
+                          "bg-gray-50 text-gray-700 border-gray-200"
+                        }`}
+                      >
+                        {business.status || "pending"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {business.submitted_date
+                        ? new Date(business.submitted_date).toLocaleDateString()
+                        : "-"}
+                    </td>
+                    <td className="px-6 py-4 text-center text-sm">
+                      <Link
+                        to={`/business/${business.id}`}
+                        className="inline-px-4 py-2 text-blue-600 hover:text-blue-800"
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {filteredBusinesses.map((item) => (
-            <Link
-              to={`/business/${item.id}`}
-              state={{ from: fromPath }}
-              key={item.id}
-              className="card-custom group"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="line-clamp-1 text-base font-semibold text-slate-900 transition-colors group-hover:text-primary">
-                  {item.eventName || `Business #${item.id}`}
-                </h3>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize flex-shrink-0 ${
-                    statusBadgeClass[item.status] || "bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {item.status || "pending"}
-                </span>
-              </div>
-
-              <p className="mt-3 line-clamp-2 text-sm text-gray-700">
-                {item.majorReason || "No major reason provided."}
-              </p>
-
-              <div className="mt-5 space-y-2 border-t border-gray-100 pt-4 text-xs text-gray-600">
-                <div className="flex justify-between">
-                  <span className="font-semibold">Financial Year:</span>
-                  <span className="text-gray-700">{item.quarter || "-"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-semibold">Submitted:</span>
-                  <span className="text-gray-700">
-                    {item.createdAt
-                      ? new Date(item.createdAt).toLocaleDateString()
-                      : "-"}
-                  </span>
-                </div>
-                {item.rejectionMessage && (
-                  <div className="flex justify-between gap-3">
-                    <span className="font-semibold">Rejection:</span>
-                    <span className="text-right text-gray-700">
-                      {item.rejectionMessage}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </Link>
-          ))}
-        </div>
       </div>
-
-      <Alert
-        isOpen={alertState.isOpen}
-        onClose={() =>
-          setAlertState((previous) => ({ ...previous, isOpen: false }))
-        }
-        severity={alertState.severity}
-        message={alertState.message}
-      />
-    </section>
+    </div>
   );
 }

@@ -6,8 +6,7 @@ import { sendEmail } from "../utils/mail.js";
 
 const getBodyValue = (body, key) => String(body?.[key] ?? "").trim();
 
-const getBodyBoolean = (body, key) =>
-  String(body?.[key] ?? "").toLowerCase() === "true";
+const getBodyBoolean = (body, key) => String(body?.[key] ?? "").toLowerCase() === "true";
 
 const getBodyNumber = (body, key) => {
   const rawValue = String(body?.[key] ?? "").trim();
@@ -46,10 +45,7 @@ const getIdeaAttachmentPaths = (attachments) => {
     attachments?.innovationPhotograph,
   ];
 
-  return attachmentValues.filter(
-    (value) =>
-      typeof value === "string" && value.startsWith("/uploads/idea-details/"),
-  );
+  return attachmentValues.filter((value) => typeof value === "string" && value.startsWith("/uploads/idea-details/"));
 };
 
 const deleteIdeaAttachmentFiles = async (attachmentPaths = []) => {
@@ -69,15 +65,11 @@ const deleteIdeaAttachmentFiles = async (attachmentPaths = []) => {
           throw error;
         }
       }
-    }),
+    })
   );
 };
 
-const triggerReviewNotification = ({
-  ideaRow,
-  nextStatus,
-  rejectionMessage,
-}) => {
+const triggerReviewNotification = ({ ideaRow, nextStatus, rejectionMessage }) => {
   if (!ideaRow?.owner_email) {
     return false;
   }
@@ -103,10 +95,7 @@ const triggerReviewNotification = ({
     subject,
     text: textParts.join("\n"),
   }).catch((error) => {
-    console.error(
-      "Failed to send review notification email:",
-      error?.message || error,
-    );
+    console.error("Failed to send review notification email:", error?.message || error);
   });
 
   return true;
@@ -129,6 +118,10 @@ const normalizeIdeaRow = (row) => ({
   ownerName: row.owner_name,
   ownerEmail: row.owner_email,
   reviewerName: row.reviewer_name,
+  innovationTitle: row.innovation_title,
+  teamLeadName: row.team_lead_name,
+  teamLeadEmail: row.team_lead_email,
+  teamLeadGender: row.team_lead_gender,
   faculty1: row.faculty_1,
   faculty2: row.faculty_2,
   faculty3: row.faculty_3,
@@ -145,14 +138,18 @@ const baseIdeaSelect = `
     id.reviewed_at,
     id.approved_at,
     id.rejected_at,
-    COALESCE(id.program_details->>'programActivityName', '') AS event_name,
-    COALESCE(id.program_details->>'aboutEvent', '') AS major_reason,
-    COALESCE(id.program_details->>'quarter', '') AS quarter,
-    COALESCE(id.duration_details->>'fromDate', '') AS from_date,
-    COALESCE(id.duration_details->>'toDate', '') AS to_date,
+    COALESCE(id.program_details->>'innovationTitle', id.program_details->>'programActivityName', '') AS event_name,
+    COALESCE(id.overview->>'problemRelevance', id.program_details->>'aboutEvent', '') AS major_reason,
+    COALESCE(id.program_details->>'fyOfDevelopment', id.program_details->>'quarter', '') AS quarter,
+    COALESCE(NULLIF(id.duration_details->>'fromDate', ''), TO_CHAR(id.created_at::date, 'YYYY-MM-DD')) AS from_date,
+    COALESCE(NULLIF(id.duration_details->>'toDate', ''), TO_CHAR(id.created_at::date, 'YYYY-MM-DD')) AS to_date,
     COALESCE(owner.name, '') AS owner_name,
     COALESCE(owner.email, '') AS owner_email,
     COALESCE(reviewer.name, '') AS reviewer_name,
+    COALESCE(id.program_details->>'innovationTitle', '') AS innovation_title,
+    COALESCE(id.program_details->>'teamLeadName', '') AS team_lead_name,
+    COALESCE(id.program_details->>'teamLeadEmail', '') AS team_lead_email,
+    COALESCE(id.program_details->>'teamLeadGender', '') AS team_lead_gender,
     COALESCE(id.faculty->>'faculty1', '') AS faculty_1,
     COALESCE(id.faculty->>'faculty2', '') AS faculty_2,
     COALESCE(id.faculty->>'faculty3', '') AS faculty_3,
@@ -172,35 +169,17 @@ export async function createIdeaDetails(request, response, next) {
     const bodyUserId = getBodyValue(body, "userId");
     const userId = String(request.user?.id ?? (bodyUserId || randomUUID()));
 
-    const faculty = {
-      faculty1: getBodyValue(body, "faculty1"),
-      faculty2: getBodyValue(body, "faculty2"),
-      faculty3: getBodyValue(body, "faculty3"),
-    };
-
     const programDetails = {
-      previousAcademicYear: getBodyValue(body, "previousAcademicYear"),
-      currentAcademicYear: getBodyValue(body, "currentAcademicYear"),
-      quarter: getBodyValue(body, "quarter"),
-      programDrivenBy: getBodyValue(body, "programDrivenBy"),
-      programActivityName: getBodyValue(body, "programActivityName"),
-      programType: getBodyValue(body, "programType"),
-      activityLedBy: getBodyValue(body, "activityLedBy"),
-      programTheme: getBodyValue(body, "programTheme"),
-      aboutEvent: getBodyValue(body, "aboutEvent"),
-      studentParticipants: getBodyNumber(body, "studentParticipants"),
-      facultyParticipants: getBodyNumber(body, "facultyParticipants"),
-      externalParticipants: getBodyNumber(body, "externalParticipants"),
-      expenditureAmount: getBodyNumber(body, "expenditureAmount"),
-      modeOfSession: getBodyValue(body, "modeOfSession"),
-      eventType: getBodyValue(body, "eventType"),
-    };
-
-    const durationDetails = {
-      durationManual: getBodyBoolean(body, "durationManual"),
-      fromDate: getBodyValue(body, "fromDate"),
-      toDate: getBodyValue(body, "toDate"),
-      durationHours: getBodyNumber(body, "durationHours"),
+      instituteName: getBodyValue(body, "instituteName"),
+      innovationTitle: getBodyValue(body, "innovationTitle"),
+      teamLeadName: getBodyValue(body, "teamLeadName"),
+      teamLeadEmail: getBodyValue(body, "teamLeadEmail"),
+      teamLeadGender: getBodyValue(body, "teamLeadGender"),
+      fyOfDevelopment: getBodyValue(body, "fyOfDevelopment"),
+      sectorDomain: getBodyValue(body, "sectorDomain"),
+      developedAsPartOf: getBodyValue(body, "developedAsPartOf"),
+      innovationType: getBodyValue(body, "innovationType"),
+      developmentStage: getBodyValue(body, "developmentStage"),
     };
 
     const overview = {
@@ -210,67 +189,25 @@ export async function createIdeaDetails(request, response, next) {
       competitorDifference: getBodyValue(body, "competitorDifference"),
     };
 
-    const speakerDetails = {
-      speakerName: getBodyValue(body, "speakerName"),
-      speakerDesignation: getBodyValue(body, "speakerDesignation"),
-      speakerOrganization: getBodyValue(body, "speakerOrganization"),
-      aboutSpeaker: getBodyValue(body, "aboutSpeaker"),
-      sessionVideoUrl: getBodyValue(body, "sessionVideoUrl"),
-      publishedSocialMediaUrl: getBodyValue(body, "publishedSocialMediaUrl"),
-    };
-
     const attachments = {
       ipPatentAssociated: getBodyValue(body, "ipPatentAssociated"),
       ipPatentDocument: getUploadedFilePath(files, "ipPatentDocument"),
       innovationGrantSupport: getBodyValue(body, "innovationGrantSupport"),
-      innovationGrantDocument: getUploadedFilePath(
-        files,
-        "innovationGrantDocument",
-      ),
+      innovationGrantDocument: getUploadedFilePath(files, "innovationGrantDocument"),
       recognitionsObtained: getBodyValue(body, "recognitionsObtained"),
-      latestAchievementDocument: getUploadedFilePath(
-        files,
-        "latestAchievementDocument",
-      ),
+      latestAchievementDocument: getUploadedFilePath(files, "latestAchievementDocument"),
       commercializedSolution: getBodyValue(body, "commercializedSolution"),
-      startupRegistrationDocument: getUploadedFilePath(
-        files,
-        "startupRegistrationDocument",
-      ),
-      incubationSupportReceived: getBodyValue(
-        body,
-        "incubationSupportReceived",
-      ),
+      startupRegistrationDocument: getUploadedFilePath(files, "startupRegistrationDocument"),
+      incubationSupportReceived: getBodyValue(body, "incubationSupportReceived"),
       incubationUnitName: getBodyValue(body, "incubationUnitName"),
       innovationVideoUrl: getBodyValue(body, "innovationVideoUrl"),
       innovationPhotograph: getUploadedFilePath(files, "innovationPhotograph"),
     };
-
-    const socialMedia = {
-      promoteTwitter: getBodyBoolean(body, "promoteTwitter"),
-      twitterUrl: getBodyValue(body, "twitterUrl"),
-      promoteFacebook: getBodyBoolean(body, "promoteFacebook"),
-      facebookUrl: getBodyValue(body, "facebookUrl"),
-      promoteInstagram: getBodyBoolean(body, "promoteInstagram"),
-      instagramUrl: getBodyValue(body, "instagramUrl"),
-      promoteLinkedin: getBodyBoolean(body, "promoteLinkedin"),
-      linkedinUrl: getBodyValue(body, "linkedinUrl"),
-    };
-
-    const bipPortal = {
-      facultyApplied: getBodyValue(body, "facultyApplied"),
-      taskId: getBodyValue(body, "taskId"),
-      departmentsInvolved: getBodyValue(body, "departmentsInvolved"),
-      department: getBodyValue(body, "department"),
-      specialLabsInvolved: getBodyValue(body, "specialLabsInvolved"),
-      specialLabs: getBodyValue(body, "specialLabs"),
-      clubInvolved: getBodyValue(body, "clubInvolved"),
-      club: getBodyValue(body, "club"),
-      firstFacultyInvolved: getBodyValue(body, "firstFacultyInvolved"),
-      secondFacultyInvolved: getBodyValue(body, "secondFacultyInvolved"),
-      thirdFacultyInvolved: getBodyValue(body, "thirdFacultyInvolved"),
-      iqacVerification: getBodyValue(body, "iqacVerification"),
-    };
+    const durationDetails = {};
+    const speakerDetails = {};
+    const socialMedia = {};
+    const bipPortal = {};
+    const faculty = {};
 
     const insertedRows = await db`
       INSERT INTO idea_details (
@@ -313,24 +250,18 @@ export async function getApprovedIdeasForAdmin(request, response, next) {
     const date = getQueryValue(request.query, "date");
     const fromDate = getQueryValue(request.query, "fromDate");
     const toDate = getQueryValue(request.query, "toDate");
-    const facultyName = getQueryValue(
-      request.query,
-      "facultyName",
-    ).toLowerCase();
-    const includeRejected =
-      getQueryValue(request.query, "includeRejected").toLowerCase() === "true";
+    const facultyName = getQueryValue(request.query, "facultyName").toLowerCase();
+    const includeRejected = getQueryValue(request.query, "includeRejected").toLowerCase() === "true";
 
     const conditions = [
-      includeRejected
-        ? "id.status IN ('approved', 'rejected')"
-        : "id.status = 'approved'",
+      includeRejected ? "id.status IN ('approved', 'rejected')" : "id.status = 'approved'",
     ];
     const params = [];
 
     if (quarter) {
       params.push(quarter);
       conditions.push(
-        `LOWER(COALESCE(id.program_details->>'quarter', '')) = LOWER($${params.length})`,
+        `LOWER(COALESCE(id.program_details->>'fyOfDevelopment', id.program_details->>'quarter', '')) = LOWER($${params.length})`
       );
     }
 
@@ -338,22 +269,22 @@ export async function getApprovedIdeasForAdmin(request, response, next) {
       params.push(date);
       conditions.push(`
         (
-          NULLIF(id.duration_details->>'fromDate', '')::date <= $${params.length}::date
-          AND NULLIF(id.duration_details->>'toDate', '')::date >= $${params.length}::date
+          COALESCE(NULLIF(id.duration_details->>'fromDate', '')::date, id.created_at::date) <= $${params.length}::date
+          AND COALESCE(NULLIF(id.duration_details->>'toDate', '')::date, id.created_at::date) >= $${params.length}::date
         )
       `);
     } else {
       if (fromDate) {
         params.push(fromDate);
         conditions.push(
-          `NULLIF(id.duration_details->>'toDate', '')::date >= $${params.length}::date`,
+          `COALESCE(NULLIF(id.duration_details->>'toDate', '')::date, id.created_at::date) >= $${params.length}::date`
         );
       }
 
       if (toDate) {
         params.push(toDate);
         conditions.push(
-          `NULLIF(id.duration_details->>'fromDate', '')::date <= $${params.length}::date`,
+          `COALESCE(NULLIF(id.duration_details->>'fromDate', '')::date, id.created_at::date) <= $${params.length}::date`
         );
       }
     }
@@ -378,7 +309,7 @@ export async function getApprovedIdeasForAdmin(request, response, next) {
       `${baseIdeaSelect}
        WHERE ${conditions.join(" AND ")}
        ORDER BY id.approved_at DESC NULLS LAST, id.created_at DESC`,
-      params,
+      params
     );
 
     response.status(200).json({
@@ -390,27 +321,20 @@ export async function getApprovedIdeasForAdmin(request, response, next) {
   }
 }
 
-export async function getApprovedIdeaFilterOptionsForAdmin(
-  _request,
-  response,
-  next,
-) {
+export async function getApprovedIdeaFilterOptionsForAdmin(_request, response, next) {
   try {
     const includeRejected =
-      getQueryValue(response.req?.query, "includeRejected").toLowerCase() ===
-      "true";
-    const statusFilter = includeRejected
-      ? "IN ('approved', 'rejected')"
-      : "= 'approved'";
+      getQueryValue(response.req?.query, "includeRejected").toLowerCase() === "true";
+    const statusFilter = includeRejected ? "IN ('approved', 'rejected')" : "= 'approved'";
 
     const quarterRows = await db.unsafe(
       `
-      SELECT DISTINCT TRIM(COALESCE(id.program_details->>'quarter', '')) AS quarter
+      SELECT DISTINCT TRIM(COALESCE(id.program_details->>'fyOfDevelopment', id.program_details->>'quarter', '')) AS quarter
       FROM idea_details id
       WHERE id.status ${statusFilter}
-        AND TRIM(COALESCE(id.program_details->>'quarter', '')) <> ''
+        AND TRIM(COALESCE(id.program_details->>'fyOfDevelopment', id.program_details->>'quarter', '')) <> ''
       ORDER BY quarter
-      `,
+      `
     );
 
     const facultyRows = await db.unsafe(
@@ -437,7 +361,7 @@ export async function getApprovedIdeaFilterOptionsForAdmin(
       ) names
       WHERE name <> ''
       ORDER BY name
-      `,
+      `
     );
 
     response.status(200).json({
@@ -465,7 +389,7 @@ export async function getMyIdeasForFaculty(request, response, next) {
       `${baseIdeaSelect}
        WHERE id.user_id = $1
        ORDER BY id.created_at DESC`,
-      [userId],
+      [userId]
     );
 
     response.status(200).json({
@@ -481,8 +405,8 @@ export async function getReviewQueueForAdmin(request, response, next) {
   try {
     const ideas = await db.unsafe(
       `${baseIdeaSelect}
-       WHERE id.status IN ('pending', 'rejected', 'approved')
-       ORDER BY CASE id.status WHEN 'pending' THEN 0 WHEN 'rejected' THEN 1 ELSE 2 END, id.created_at DESC`,
+       WHERE id.status IN ('pending', 'rejected')
+       ORDER BY CASE id.status WHEN 'pending' THEN 0 ELSE 1 END, id.created_at DESC`
     );
 
     response.status(200).json({
@@ -535,7 +459,7 @@ export async function getIdeaById(request, response, next) {
       WHERE id.id = $1
       LIMIT 1
       `,
-      [ideaId],
+      [ideaId]
     );
 
     const ideaRow = ideaRows[0];
@@ -546,10 +470,7 @@ export async function getIdeaById(request, response, next) {
 
     const requestRole = String(request.user?.role ?? "").toLowerCase();
     const requestUserId = String(request.user?.id ?? "").trim();
-    if (
-      requestRole === "faculty" &&
-      requestUserId !== String(ideaRow.user_id)
-    ) {
+    if (requestRole === "faculty" && requestUserId !== String(ideaRow.user_id)) {
       response.status(403).json({ message: "Forbidden" });
       return;
     }
@@ -565,14 +486,30 @@ export async function getIdeaById(request, response, next) {
         approvedAt: ideaRow.approved_at,
         rejectedAt: ideaRow.rejected_at,
         createdAt: ideaRow.created_at,
-        eventName: ideaRow.program_details?.programActivityName || "",
-        majorReason: ideaRow.program_details?.aboutEvent || "",
-        quarter: ideaRow.program_details?.quarter || "",
+        eventName:
+          ideaRow.program_details?.innovationTitle ||
+          ideaRow.program_details?.programActivityName ||
+          "",
+        majorReason:
+          ideaRow.overview?.problemRelevance ||
+          ideaRow.program_details?.aboutEvent ||
+          "",
+        quarter:
+          ideaRow.program_details?.fyOfDevelopment ||
+          ideaRow.program_details?.quarter ||
+          "",
         ownerName: ideaRow.owner_name,
         ownerEmail: ideaRow.owner_email,
         reviewerName: ideaRow.reviewer_name,
+        ideaDetails: ideaRow.program_details,
         programDetails: ideaRow.program_details,
-        durationDetails: ideaRow.duration_details,
+        durationDetails:
+          ideaRow.duration_details && Object.keys(ideaRow.duration_details).length > 0
+            ? ideaRow.duration_details
+            : {
+                fromDate: ideaRow.created_at,
+                toDate: ideaRow.created_at,
+              },
         overview: ideaRow.overview,
         speakerDetails: ideaRow.speaker_details,
         attachments: ideaRow.attachments,
@@ -589,12 +526,8 @@ export async function getIdeaById(request, response, next) {
 export async function reviewIdeaByAdmin(request, response, next) {
   try {
     const ideaId = Number(request.params?.ideaId);
-    const action = String(request.body?.action ?? "")
-      .trim()
-      .toLowerCase();
-    const rejectionMessage = String(
-      request.body?.rejectionMessage ?? "",
-    ).trim();
+    const action = String(request.body?.action ?? "").trim().toLowerCase();
+    const rejectionMessage = String(request.body?.rejectionMessage ?? "").trim();
 
     if (!Number.isFinite(ideaId) || ideaId <= 0) {
       response.status(400).json({ message: "Invalid idea id." });
@@ -602,9 +535,7 @@ export async function reviewIdeaByAdmin(request, response, next) {
     }
 
     if (!["approve", "reject"].includes(action)) {
-      response
-        .status(400)
-        .json({ message: "Action must be approve or reject." });
+      response.status(400).json({ message: "Action must be approve or reject." });
       return;
     }
 
@@ -613,7 +544,7 @@ export async function reviewIdeaByAdmin(request, response, next) {
       SELECT
         id.id,
         id.user_id,
-        COALESCE(id.program_details->>'programActivityName', '') AS event_name,
+        COALESCE(id.program_details->>'innovationTitle', id.program_details->>'programActivityName', '') AS event_name,
         owner.email AS owner_email,
         owner.name AS owner_name
       FROM idea_details id
@@ -625,7 +556,7 @@ export async function reviewIdeaByAdmin(request, response, next) {
       WHERE id.id = $1
       LIMIT 1
       `,
-      [ideaId],
+      [ideaId]
     );
 
     const ideaRow = ideaRows[0];
@@ -650,15 +581,11 @@ export async function reviewIdeaByAdmin(request, response, next) {
       WHERE id = $4
       RETURNING id, status, rejection_message, reviewed_at, approved_at, rejected_at
       `,
-      [nextStatus, rejectionMessage || null, adminUserId, ideaId],
+      [nextStatus, rejectionMessage || null, adminUserId, ideaId]
     );
 
     const updatedIdea = updatedRows[0];
-    const emailQueued = triggerReviewNotification({
-      ideaRow,
-      nextStatus,
-      rejectionMessage,
-    });
+    const emailQueued = triggerReviewNotification({ ideaRow, nextStatus, rejectionMessage });
 
     response.status(200).json({
       message: `Idea ${nextStatus} successfully.`,
@@ -686,7 +613,7 @@ export async function deleteIdeaByAdmin(request, response, next) {
       SELECT
         id.id,
         id.attachments,
-        COALESCE(id.program_details->>'programActivityName', '') AS event_name,
+        COALESCE(id.program_details->>'innovationTitle', id.program_details->>'programActivityName', '') AS event_name,
         COALESCE(owner.name, '') AS owner_name
       FROM idea_details id
       LEFT JOIN users owner
@@ -697,7 +624,7 @@ export async function deleteIdeaByAdmin(request, response, next) {
       WHERE id.id = $1
       LIMIT 1
       `,
-      [ideaId],
+      [ideaId]
     );
 
     const ideaRow = ideaRows[0];
@@ -711,9 +638,7 @@ export async function deleteIdeaByAdmin(request, response, next) {
       WHERE id = ${ideaId}
     `;
 
-    await deleteIdeaAttachmentFiles(
-      getIdeaAttachmentPaths(ideaRow.attachments),
-    );
+    await deleteIdeaAttachmentFiles(getIdeaAttachmentPaths(ideaRow.attachments));
 
     response.status(200).json({
       message: "Idea deleted successfully.",

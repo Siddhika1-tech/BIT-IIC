@@ -5,7 +5,7 @@ import multer from "multer";
 const uploadDirectory = path.join(process.cwd(), "uploads", "business-details");
 fs.mkdirSync(uploadDirectory, { recursive: true });
 
-const allowedExtensions = new Set([".jpg", ".jpeg", ".png"]);
+const allowedExtensions = new Set([".pdf", ".jpg", ".jpeg", ".png"]);
 
 const storage = multer.diskStorage({
   destination: (_request, _file, callback) => {
@@ -22,7 +22,9 @@ const fileFilter = (_request, file, callback) => {
   const extension = path.extname(file.originalname).toLowerCase();
 
   if (!allowedExtensions.has(extension)) {
-    callback(new Error("Invalid file type. Only JPG/JPEG/PNG are allowed."));
+    callback(
+      new Error("Invalid file type. Only PDF/JPG/JPEG/PNG are allowed."),
+    );
     return;
   }
 
@@ -38,8 +40,5 @@ const upload = multer({
 });
 
 export const uploadBusinessDetails = upload.fields([
-  { name: "ipPatentDocument", maxCount: 1 },
-  { name: "recognitionAwardDocument", maxCount: 1 },
-  { name: "annualTurnoverDocument", maxCount: 1 },
-  { name: "innovationPhotograph", maxCount: 1 },
+  { name: "document", maxCount: 1 },
 ]);

@@ -24,185 +24,143 @@ export default function AdminBusinessReview() {
     severity: "info",
   });
 
+  const loadQueue = async () => {
+    setLoading(true);
+    try {
+      const payload = await getAdminBusinessReviewQueue(token);
+      setBusinesses(payload.data || []);
+    } catch (error) {
+      setAlertState({
+        isOpen: true,
+        message: error.message || "Failed to fetch review queue.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadQueue = async () => {
-      setLoading(true);
-      try {
-        const payload = await getAdminBusinessReviewQueue(token);
-        setBusinesses(payload.data || []);
-      } catch (error) {
-        setAlertState({
-          isOpen: true,
-          message: error.message || "Failed to fetch business review queue.",
-          severity: "error",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadQueue();
-  }, [token]);
+  }, [token, statusFilter, facultyFilter]);
 
-  const statusOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(businesses.map((item) => item.status).filter(Boolean)),
-      ),
-    [businesses],
-  );
+  const statusOptions = useMemo(() => {
+    return Array.from(
+      new Set(businesses.map((item) => item.status).filter(Boolean)),
+    ).sort();
+  }, [businesses]);
 
-  const facultyOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(businesses.map((item) => item.ownerName).filter(Boolean)),
-      ).sort((left, right) => left.localeCompare(right)),
-    [businesses],
-  );
+  const facultyOptions = useMemo(() => {
+    return Array.from(
+      new Set(businesses.map((item) => item.owner_name).filter(Boolean)),
+    ).sort();
+  }, [businesses]);
 
-  const filteredBusinesses = useMemo(
-    () =>
-      businesses.filter((item) => {
-        if (statusFilter && item.status !== statusFilter) {
-          return false;
-        }
-
-        if (facultyFilter && item.ownerName !== facultyFilter) {
-          return false;
-        }
-
-        return true;
-      }),
-    [businesses, statusFilter, facultyFilter],
-  );
-
-  const fromPath = `${location.pathname}${location.search}`;
+  const filteredBusinesses = useMemo(() => {
+    return businesses.filter((item) => {
+      if (statusFilter && item.status !== statusFilter) return false;
+      if (facultyFilter && item.owner_name !== facultyFilter) return false;
+      return true;
+    });
+  }, [businesses, statusFilter, facultyFilter]);
 
   return (
-    <section className="-m-6 min-h-[calc(100vh-4rem)] bg-white">
-      <div className="grid gap-4 border-b border-gray-200 px-6 py-5 md:grid-cols-2 xl:grid-cols-4">
-        <SearchableSelect
-          label="Status"
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={statusOptions}
-          emptyLabel="All Statuses"
-        />
+    <div className="p-6 max-w-7xl mx-auto">
+      <Alert
+        message={alertState.message}
+        severity={alertState.severity}
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
+      />
 
-        <SearchableSelect
-          label="Faculty"
-          value={facultyFilter}
-          onChange={setFacultyFilter}
-          options={facultyOptions}
-          emptyLabel="All Faculty"
-        />
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold">Business Review Queue</h1>
+      </div>
 
-        <div className="flex items-end gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter("");
-              setFacultyFilter("");
-            }}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Reset
-          </button>
-        </div>
-
-        <div className="flex items-end justify-end">
-          <span className="badge-primary">
-            {filteredBusinesses.length} business
-            {filteredBusinesses.length !== 1 ? "es" : ""}
-          </span>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SearchableSelect
+            label="Status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusOptions}
+            placeholder="Filter by status..."
+          />
+          <SearchableSelect
+            label="Faculty"
+            value={facultyFilter}
+            onChange={setFacultyFilter}
+            options={facultyOptions}
+            placeholder="Filter by faculty..."
+          />
         </div>
       </div>
 
-      <div className="px-6 py-5">
-        {!loading && filteredBusinesses.length === 0 && (
-          <div className="empty-state mx-auto max-w-md py-8">
-            <div className="empty-state-icon">
-              <svg
-                className="mx-auto"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4 0h1m-1-4h1"
-                />
-              </svg>
-            </div>
-            <p className="empty-state-title">No Businesses in Review Queue</p>
-            <p className="empty-state-description">
-              All pending businesses have been reviewed.
-            </p>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        {loading ? (
+          <div className="p-6 text-center text-gray-500">Loading...</div>
+        ) : filteredBusinesses.length === 0 ? (
+          <div className="p-6 text-center text-gray-500">
+            No businesses in the review queue.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                    Faculty
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
+                    Submitted Date
+                  </th>
+                  <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBusinesses.map((business) => (
+                  <tr
+                    key={business.id}
+                    className="border-b border-gray-100 hover:bg-gray-50"
+                  >
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {business.owner_name || "-"}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                          statusBadgeClass[business.status] ||
+                          "bg-gray-50 text-gray-700 border-gray-200"
+                        }`}
+                      >
+                        {business.status || "pending"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      {business.submitted_date
+                        ? new Date(business.submitted_date).toLocaleDateString()
+                        : "-"}
+                    </td>
+                    <td className="px-6 py-4 text-center text-sm">
+                      <Link
+                        to={`/business/${business.id}`}
+                        className="inline-px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        Review
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredBusinesses.map((item) => (
-            <Link
-              to={`/business/${item.id}`}
-              state={{ from: fromPath }}
-              key={item.id}
-              className="card-custom group"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="line-clamp-1 text-base font-semibold text-slate-900 group-hover:text-primary transition-colors">
-                  {item.eventName || `Business #${item.id}`}
-                </h3>
-                <span
-                  className={`${
-                    statusBadgeClass[item.status] ||
-                    "bg-gray-100 text-gray-700 border-gray-200"
-                  } rounded-lg px-3 py-1.5 text-xs font-semibold capitalize border inline-flex items-center justify-center transition-all duration-200`}
-                >
-                  {item.status || "pending"}
-                </span>
-              </div>
-
-              <p className="mt-3 line-clamp-2 text-sm text-gray-700">
-                {item.majorReason || "No major reason provided."}
-              </p>
-
-              <div className="mt-4 space-y-2 text-xs text-gray-600">
-                <p>
-                  <span className="font-semibold">Owner:</span>{" "}
-                  {item.ownerName || "-"}
-                </p>
-                <p>
-                  <span className="font-semibold">Financial Year:</span>{" "}
-                  {item.quarter || "-"}
-                </p>
-              </div>
-
-              {item.rejectionMessage && (
-                <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-2">
-                  <p className="text-xs font-semibold text-amber-900 mb-1">
-                    Reviewer's Comment
-                  </p>
-                  <p className="line-clamp-2 text-xs text-amber-800">
-                    {item.rejectionMessage}
-                  </p>
-                </div>
-              )}
-            </Link>
-          ))}
-        </div>
       </div>
-
-      <Alert
-        isOpen={alertState.isOpen}
-        onClose={() =>
-          setAlertState((previous) => ({ ...previous, isOpen: false }))
-        }
-        severity={alertState.severity}
-        message={alertState.message}
-      />
-    </section>
+    </div>
   );
 }
